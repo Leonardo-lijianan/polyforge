@@ -4,6 +4,23 @@
   "description": "一份模型定义，生成数据库 / 后端 / 前端代码",
   "type": "module",
   "license": "MIT",
+  "author": "Leonardo <3572113478@qq.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Leonardo-lijianan/polyforge.git"
+  },
+  "homepage": "https://github.com/Leonardo-lijianan/polyforge#readme",
+  "bugs": {
+    "url": "https://github.com/Leonardo-lijianan/polyforge/issues"
+  },
+  "keywords": [
+    "code-generator",
+    "schema",
+    "yaml",
+    "model-driven",
+    "contract-first",
+    "polyforge"
+  ],
   "bin": {
     "polyforge": "./index.mjs"
   },
