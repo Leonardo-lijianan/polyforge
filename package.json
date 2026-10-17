@@ -22,7 +22,7 @@
     "polyforge"
   ],
   "bin": {
-    "polyforge": "./index.mjs"
+    "polyforge": "index.mjs"
   },
   "main": "./index.mjs",
   "files": [
