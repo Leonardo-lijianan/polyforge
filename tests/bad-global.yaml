@@ -1,0 +1,9 @@
+# 反向测试：验证 global 文件被 schema 正确校验
+kind: global
+
+# 未知字段（contract.schema.json 是 additionalProperties:false，应被抓）
+foobar: 1
+
+enums:
+  TestEnum:
+    values: [a, b]

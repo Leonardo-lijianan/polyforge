@@ -1,0 +1,12 @@
+# 测试用权限文件（最小）
+kind: permissions
+
+dataScopes: [self, rela, all]
+
+roles:
+  - name: employer
+    label: 甲方
+    defaultDataScope: self
+  - name: contractor
+    label: 乙方
+    defaultDataScope: self

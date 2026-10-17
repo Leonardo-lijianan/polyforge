@@ -1,0 +1,9 @@
+# ref 指向不存在的实体：应报引用不存在
+kind: domain
+domain: refbad
+
+entities:
+  Post:
+    fields:
+      id: { type: id, idType: long }
+      authorId: { ref: NoSuchEntity }

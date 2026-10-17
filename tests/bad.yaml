@@ -1,0 +1,70 @@
+# 反向测试契约：故意全错，验证检查器能抓到多少
+kind: domain
+domain: bad-test
+
+enums:
+  # 定义 UserRole 供 C9/C10 测试
+  UserRole:
+    values: [employer, contractor]
+
+  # C5：定义但无人用，应报警告
+  UnusedEnum:
+    values: [a, b, c]
+
+  # C10：流转 by 含非法角色
+  LoopStatus:
+    values: [x, y]
+    state:
+      initial: x
+      transitions:
+        - { from: x, to: [y], action: go, by: [employer, hacker] }
+
+entities:
+  # C12：实体名不符合 PascalCase
+  bad_entity:
+    fields:
+      # C12：字段名不符合 camelCase
+      Bad_Field: { type: string }
+      # C1：引用不存在
+      ref:       { type: NotExist }
+      # C15：数组缺 of
+      arr:       { type: array }
+      # C3：实体引用 view（方向违规）
+      wrongRef:  { type: SomeForm }
+
+  # C4：与下面 EntityB 构成环
+  EntityA:
+    fields:
+      b: { type: EntityB }
+
+  EntityB:
+    fields:
+      a: { type: EntityA }
+
+views:
+  SomeForm:
+    kind: form
+    fields:
+      a: { type: string }
+    # C13：required 里 b 不存在
+    required: [a, b]
+
+  BadOutput:
+    kind: brief
+    fields:
+      x: { type: string }
+
+api:
+  badApi:
+    method: POST
+    path: /bad
+    # C9：hacker 不在 UserRole 里
+    auth: { roles: [hacker] }
+    # C1：输出引用了不存在的 view
+    output: NotAView
+
+  normalApi:
+    method: GET
+    path: /ok
+    auth: public
+    output: BadOutput

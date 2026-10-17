@@ -1,0 +1,32 @@
+{
+  "name": "@leonardo-lijianan/polyforge",
+  "version": "0.1.0",
+  "description": "一份模型定义，生成数据库 / 后端 / 前端代码",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "polyforge": "./index.mjs"
+  },
+  "main": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "config.mjs",
+    "source.mjs",
+    "parser",
+    "validate",
+    "generators",
+    "schemas"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "js-yaml": "^5.4.3",
+    "ajv": "^8.20.0"
+  },
+  "scripts": {
+    "check": "node index.mjs check",
+    "gen": "node index.mjs gen",
+    "test": "node tests/run.mjs"
+  }
+}

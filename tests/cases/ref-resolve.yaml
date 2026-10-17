@@ -1,0 +1,15 @@
+# ref 解析：ref 字段类型从目标主键派生，check 应通过
+# 且前端应生成 string、落库应是 bigint（此处只验 check 不报错）
+kind: domain
+domain: refresolve
+
+entities:
+  User:
+    fields:
+      id: { type: id, idType: long }
+      name: { type: string }
+
+  Post:
+    fields:
+      id: { type: id, idType: long }
+      authorId: { ref: User, index: true }

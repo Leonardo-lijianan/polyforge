@@ -1,0 +1,14 @@
+# ref 是弱边：两个实体互相 ref（存彼此的 id），不成环，不应报 C4
+kind: domain
+domain: refweak
+
+entities:
+  Dept:
+    fields:
+      id: { type: id, idType: long }
+      managerId: { ref: Emp, nullable: true }
+
+  Emp:
+    fields:
+      id: { type: id, idType: long }
+      deptId: { ref: Dept, nullable: true }

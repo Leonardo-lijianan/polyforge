@@ -1,0 +1,10 @@
+# 反向测试：验证 permissions 文件被 schema 正确校验
+kind: permissions
+
+# roles 项缺必填字段 name（permissions.schema.json 里 name 必填）
+roles:
+  - label: 缺名字的角色
+    defaultDataScope: self
+
+# 未知字段（additionalProperties:false，应被抓）
+unknownField: 1

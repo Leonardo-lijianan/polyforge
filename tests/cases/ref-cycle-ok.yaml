@@ -1,0 +1,14 @@
+# 弱边不成环：实体的字段是彼此的 id（type: long），不是嵌套
+# 存的是 id（Long），不产生对象嵌套，合法，不应报 C4。
+kind: domain
+domain: refok
+
+entities:
+  Dept:
+    fields:
+      id: { type: id }
+      managerId: { type: long, nullable: true }
+  Emp:
+    fields:
+      id: { type: id }
+      deptId: { type: long, nullable: true }

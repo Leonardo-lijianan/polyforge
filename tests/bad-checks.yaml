@@ -1,0 +1,49 @@
+# 反向测试契约：故意触发 C17~C25
+# 用法：CONTRACT_DIR=tools/contract-compiler/tests npm run contract:check
+# 注意：本目录会连 auth 等其他测试文件一起加载，此文件独立域避免干扰
+kind: domain
+domain: badchecks
+description: 反向测试——验证 C17~C25 能抓错
+
+entities:
+  # C18：缺 id / C12：命名规范
+  NoIdEntity:
+    table: no_id_entity
+    fields:
+      name: { type: string }
+
+  # C18：多个 id
+  MultiIdEntity:
+    table: multi_id_entity
+    fields:
+      id:    { type: id }
+      id2:   { type: id }
+      name:  { type: string }
+
+  # C19：auto 非 datetime；C20：sensitive 非 string；C21：主键 nullable；C22：of 配非 array
+  BadFields:
+    table: bad_fields
+    fields:
+      id:        { type: id, nullable: true }
+      autoNum:   { type: int, auto: create }
+      senNum:    { type: int, sensitive: mask }
+      ofString:  { type: string, of: BadFields }
+    # C16：索引字段不存在（C17 空索引由 schema 覆盖，已单独验证）
+    indexes:
+      - { fields: [noSuchField] }
+
+views:
+  # C23：未知校验器；C24：validateRef 引用不存在
+  BadForm:
+    kind: form
+    fields:
+      a: { type: string, validate: notARealValidator }
+      b: { type: string, validateRef: notExistField }
+    required: [notExistRequired]
+
+api:
+  # C25：角色 hacker 不在 permissions
+  badRoleApi:
+    method: POST
+    path: /bad-role
+    auth: { roles: [hacker], scope: self }

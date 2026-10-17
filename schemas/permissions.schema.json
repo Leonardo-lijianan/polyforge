@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://we-engine.local/permissions.schema.json",
+  "title": "We-Engine Permissions Contract",
+  "description": "权限文件校验规则（kind: permissions）",
+  "type": "object",
+  "required": ["kind", "roles"],
+  "additionalProperties": false,
+  "properties": {
+    "kind": { "type": "string", "const": "permissions" },
+    "description": { "type": "string" },
+    "resources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "operations"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "operations": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "dataScopes": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["self", "rela", "all"] },
+      "uniqueItems": true
+    },
+    "roles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["name"],
+        "additionalProperties": false,
+        "properties": {
+          "name": { "type": "string" },
+          "label": { "type": "string" },
+          "defaultDataScope": { "type": "string", "enum": ["self", "rela", "all"] },
+          "permissions": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

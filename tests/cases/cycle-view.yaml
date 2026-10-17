@@ -1,0 +1,14 @@
+# 强边成环：视图嵌套视图，应报 C4
+# 值互相嵌套，序列化会无限递归，非法。
+kind: domain
+domain: cycview
+
+views:
+  ViewA:
+    kind: detail
+    fields:
+      b: { type: ViewB }
+  ViewB:
+    kind: detail
+    fields:
+      a: { type: ViewA }
