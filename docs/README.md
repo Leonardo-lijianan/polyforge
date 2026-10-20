@@ -2,8 +2,8 @@
 
 > 模型编译器：一份模型定义，生成数据库 / 后端 / 前端代码。
 
-> **状态（2026-10-18）**：本手册已按当前代码校对过一轮（13 份修正）。
-> 已知仍有少量描述滞后，清单见 `work-notes/2026-10-18-polyforge-docs-audit.md`。
+> **状态（2026-10-20）**：本手册已按 1.0.0 代码校对（JPA→MyBatis-Plus 迁移收尾、`basePackage` 生效、`schemaVersion` 必填）。
+> 版本策略见 [VERSIONING.md](VERSIONING.md)；本轮改动清单见 `work-notes/2026-10-20-fix-plan.md`。
 > 事实以代码为准——`polyforge/index.mjs`、`validate/index.mjs`、`generators/**` 是最终判据。
 
 ## 这是什么
@@ -61,6 +61,11 @@ PolyForge 从一组 YAML 模型出发，生成数据库迁移、后端代码、�
 ### 附录
 - [术语表](appendix/glossary.md)
 - [归档（历史设计文档）](appendix/archive/)
+
+## 规范
+
+- [版本与兼容性](VERSIONING.md)（**改版本号前必读**）：包版本 `major.minor.hotfix`、配置 `schemaVersion: '1.0'`（major.minor）的判定规则与关联规则
+- [基线文件](BASELINES.md)：`schema-snapshot.json` / `db-schema-state.json` 各自的职责、为什么必须入库、`manifest.json` 为何删除
 
 ## 约定
 

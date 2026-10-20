@@ -81,7 +81,8 @@ export function buildIR(loaded) {
   for (const api of apis) allNames.set(api.name, { kind: 'api', name: api.name })
 
   // ============ ② 解析字段引用 ============
-  const resolveField = (def, ownerName) => {
+  const resolveField = (def, ownerName, opts = {}) => {
+    const withIdType = opts.withIdType !== false
     if (!def || typeof def !== 'object') return def
     const out = { ...def }
 
@@ -97,7 +98,7 @@ export function buildIR(loaded) {
       const idDef = Object.values(target.fields || {}).find((f) => f.type === 'id')
       const idType = (idDef && idDef.idType) || 'long'
       out.type = 'id'
-      out.idType = idType
+      if (withIdType) out.idType = idType
       out.resolved = { kind: 'ref', target: def.ref, idType }
       return out
     }
@@ -119,7 +120,10 @@ export function buildIR(loaded) {
       out.resolved = { kind: 'primitive', target: t }
     }
     // id 字段：解析 idType（默认 long）
-    if (t === 'id') {
+    // 只有实体和路径参数需要 idType（主键策略 / 路径变量类型）。
+    // 视图与 query 的 id 一律按 String 表达（DTO 侧 PRIM.id = 'String'），
+    // 不加 idType：否则 C31「修饰符位置」误报，且 assembler 会生成类型不匹配的代码。
+    if (t === 'id' && withIdType) {
       out.idType = def.idType || 'long'
     }
     // 数组元素类型：命名类型 或 基础类型（array of string）
@@ -169,7 +173,7 @@ export function buildIR(loaded) {
   for (const [name, v] of views) {
     const fields = {}
     for (const [fn, fd] of Object.entries(v.fields || {})) {
-      fields[fn] = resolveField(fd, name + '.' + fn)
+      fields[fn] = resolveField(fd, name + '.' + fn, { withIdType: false })
     }
     v.fields = fields
   }
@@ -178,7 +182,7 @@ export function buildIR(loaded) {
     if (api.query) {
       const q = {}
       for (const [fn, fd] of Object.entries(api.query)) {
-        q[fn] = resolveField(fd, 'api.' + api.name + '.query.' + fn)
+        q[fn] = resolveField(fd, 'api.' + api.name + '.query.' + fn, { withIdType: false })
       }
       api.query = q
     }

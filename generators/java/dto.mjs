@@ -13,8 +13,7 @@ const HEADER = [
   '',
 ]
 
-const PKG = 'com.we.engine.server.generated.dto'
-const PKG_ENUM = 'com.we.engine.server.generated.enums'
+// 包名由 generateJavaDto 的 basePackage 参数派生（见文件末尾）
 
 const PRIM = {
   id: 'String', string: 'String', text: 'String',
@@ -42,7 +41,7 @@ function javaTypeByRef(name, resolved) {
   throw new Error('无法映射 DTO 字段引用类型: ' + name + '（kind=' + resolved.kind + '）')
 }
 
-function renderDto(name, def) {
+function renderDto(name, def, PKG, PKG_ENUM) {
   const fields = def.fields || {}
   const lines = [...HEADER]
   lines.push('package ' + PKG + ';')
@@ -92,13 +91,15 @@ function renderDto(name, def) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaDto(ir, outRoot) {
+export function generateJavaDto(ir, outRoot, basePackage) {
+  const PKG = basePackage + '.generated.dto'
+  const PKG_ENUM = basePackage + '.generated.enums'
   const dir = join(outRoot, 'dto')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   let count = 0
   for (const [name, def] of ir.views) {
-    writeFileSync(join(dir, name + '.java'), renderDto(name, def), 'utf-8')
+    writeFileSync(join(dir, name + '.java'), renderDto(name, def, PKG, PKG_ENUM), 'utf-8')
     count++
   }
   console.log('  [java/dto] ' + count + ' 个 DTO → ' + dir)

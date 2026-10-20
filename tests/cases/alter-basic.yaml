@@ -1,0 +1,41 @@
+kind: domain
+domain: alter-basic
+description: alter 增量迁移的端到端 fixture（最小合法模型）
+enums:
+  SampleStatus:
+    values: [active, inactive]
+entities:
+  Sample:
+    table: sample
+    fields:
+      id:         { type: id }
+      name:       { type: string, length: 64, unique: true }
+      status:     { type: SampleStatus }
+      createTime: { type: datetime, auto: create }
+views:
+  SampleForm:
+    kind: form
+    required: [name]
+    fields:
+      name:   { type: string }
+      status: { type: SampleStatus }
+  SampleDetail:
+    kind: detail
+    fields:
+      id:     { type: id, from: Sample.id }
+      name:   { type: string, from: Sample.name }
+      status: { type: SampleStatus, from: Sample.status }
+api:
+  createSample:
+    method: POST
+    path: /samples
+    summary: 新增样例
+    input: SampleForm
+    output: SampleDetail
+  getSample:
+    method: GET
+    path: /samples/:id
+    summary: 查询样例
+    output: SampleDetail
+    pathParams:
+      id: { type: id }

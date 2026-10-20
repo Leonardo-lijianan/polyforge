@@ -1,6 +1,6 @@
 {
   "name": "@leonardo-lijianan/polyforge",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "一份模型定义，生成数据库 / 后端 / 前端代码",
   "type": "module",
   "license": "MIT",
@@ -29,6 +29,7 @@
     "index.mjs",
     "config.mjs",
     "source.mjs",
+    "snapshot.mjs",
     "parser",
     "validate",
     "generators",
@@ -47,6 +48,7 @@
   "scripts": {
     "check": "node index.mjs check",
     "gen": "node index.mjs gen",
-    "test": "node tests/run.mjs"
+    "gen:check": "node index.mjs gen && git diff --exit-code",
+    "test": "node tests/run.mjs && node tests/alter-diff.mjs && node tests/gen-smoke.mjs"
   }
 }

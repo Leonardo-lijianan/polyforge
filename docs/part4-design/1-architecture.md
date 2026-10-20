@@ -51,15 +51,13 @@ flowchart TD
 | build IR 与 validate 分开 | build IR 负责「整理」，validate 负责「挑错」；IR 也是生成器的输入，不只是校验的中间物 |
 | 生成器只读 IR | 生成器不碰 YAML、不做校验，只做「IR → 文本」的纯转换 |
 
-## 四个 CLI 命令
+## 三个 CLI 命令
 
 ```mermaid
 flowchart LR
   C["check"] --> A["load + schema + IR + validate"]
   G["gen"] --> A
   G --> W["generate"]
-  V["verify"] --> A
-  V --> M["比对 manifest MD5"]
   I["ir"] --> A
   I --> P["打印 IR"]
 ```
@@ -68,18 +66,19 @@ flowchart LR
 |---|---|---|
 | `check` | validate | 只校验 |
 | `gen` | generate | 校验 + 生成（支持 `--target`） |
-| `verify` | validate + manifest | 校验生成物未被手改（支持 `--target`） |
 | `ir` | build IR | 打印中间结构（调试） |
 
-`gen` 和 `verify` 都支持 `--target=frontend|backend|db|all`。三个 target 是**独立完整的生成器集合**，`gen --target=all` 只是依次跑完。
+`gen` 支持 `--target=frontend|backend|db|all`。三个 target 是**独立完整的生成器集合**，`gen --target=all` 只是依次跑完。
+
+检测「契约变了但忘记重新 gen」用 `polyforge gen && git diff --exit-code`，不需要内置 verify 命令（见 [BASELINES.md](../BASELINES.md)）。
 
 ## 目录结构
 
 ```
 polyforge/
-├── index.mjs            入口：编排五层 + 四个命令
+├── index.mjs            入口：编排五层 + 三个命令
 ├── config.mjs           读 polyforge.config.yaml（优先）/ .mjs（fallback）
-├── source.mjs           契约源解析：git clone/pull 到 .polyforge/cache/
+├── source.mjs           契约源解析：git clone 到系统临时目录的共享缓存
 ├── parser/
 │   ├── load.mjs         层 1：读文件
 │   ├── schema-validator.mjs  层 2：结构校验
@@ -96,7 +95,7 @@ polyforge/
 
 ### 契约源在五层之前
 
-`source.mjs` 在 load 之前执行：按 `polyforge.config.yaml` 的 `source.git` 把契约仓库 clone/pull 到 `.polyforge/cache/<repo>-<ref>/`，返回实际目录给 load。
+`source.mjs` 在 load 之前执行：按 `polyforge.config.yaml` 的 `source.git` 把契约仓库 clone 到系统临时目录（`<tmp>/polyforge-cache-<user>/<repo>-<urlhash>-<ref>/`），跨项目共享；后续按 ref 类型探测远程版本、按需更新。返回实际目录给 load。
 
 **只支持 git 源**——本地路径会导致各消费方版本不一致。唯一例外是环境变量 `POLYFORGE_SOURCE`（仅供 polyforge 自身测试）。
 

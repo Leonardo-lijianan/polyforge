@@ -20,8 +20,7 @@ const HEADER = [
   '',
 ]
 
-const PKG_SERVICE = 'com.we.engine.server.generated.service'
-const PKG_DTO = 'com.we.engine.server.generated.dto'
+// 包名由 generateJavaService 的 basePackage 参数派生（见文件末尾）
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function camel(s) { return s.split(/[-_]/).filter(Boolean).map(cap).join('') }
@@ -90,7 +89,7 @@ function groupByDomain(apis) {
   return map
 }
 
-function renderService(domain, apis) {
+function renderService(domain, apis, PKG_SERVICE, PKG_DTO) {
   const name = serviceName(domain)
   const lines = [...HEADER]
   lines.push('package ' + PKG_SERVICE + ';')
@@ -116,12 +115,12 @@ function renderService(domain, apis) {
   return lines.join('\n') + '\n'
 }
 
-function renderImpl(domain, apis) {
+function renderImpl(domain, apis, PKG_SERVICE, PKG_DTO, PKG_IMPL) {
   const svc = serviceName(domain)
   const impl = svc + 'Impl'
   const lines = []
   lines.push('// 手写实现：纯骨架会被 polyforge 刷新；填入业务逻辑后即受保护。')
-  lines.push('package com.we.engine.server.service;')
+  lines.push('package ' + PKG_IMPL + ';')
   lines.push('')
   lines.push('import ' + PKG_SERVICE + '.' + svc + ';')
 
@@ -165,7 +164,10 @@ function isPureSkeleton(content, methodCount) {
   return throwCount === methodCount && !hasReturn
 }
 
-export function generateJavaService(ir, outRoot, handRoot) {
+export function generateJavaService(ir, outRoot, handRoot, basePackage) {
+  const PKG_SERVICE = basePackage + '.generated.service'
+  const PKG_DTO = basePackage + '.generated.dto'
+  const PKG_IMPL = basePackage + '.service'
   const dir = join(outRoot, 'service')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
   const implDir = join(handRoot, 'service')
@@ -178,19 +180,19 @@ export function generateJavaService(ir, outRoot, handRoot) {
   let implKept = 0
   for (const [domain, apis] of byDomain) {
     const svc = serviceName(domain)
-    writeFileSync(join(dir, svc + '.java'), renderService(domain, apis), 'utf-8')
+    writeFileSync(join(dir, svc + '.java'), renderService(domain, apis, PKG_SERVICE, PKG_DTO), 'utf-8')
     ifaceCount++
 
     const implPath = join(implDir, svc + 'Impl.java')
     if (!existsSync(implPath)) {
-      writeFileSync(implPath, renderImpl(domain, apis), 'utf-8')
+      writeFileSync(implPath, renderImpl(domain, apis, PKG_SERVICE, PKG_DTO, PKG_IMPL), 'utf-8')
       implCreated++
       continue
     }
     // 已存在：纯骨架则覆盖以同步签名，有人手写逻辑则保护跳过
     const existing = readFileSync(implPath, 'utf-8')
     if (isPureSkeleton(existing, apis.length)) {
-      writeFileSync(implPath, renderImpl(domain, apis), 'utf-8')
+      writeFileSync(implPath, renderImpl(domain, apis, PKG_SERVICE, PKG_DTO, PKG_IMPL), 'utf-8')
       implRefreshed++
     } else {
       implKept++

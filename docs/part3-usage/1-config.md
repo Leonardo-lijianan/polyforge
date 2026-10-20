@@ -5,6 +5,9 @@ polyforge 从项目根目录的 `polyforge.config.yaml` 读取配置（`polyforg
 ## 完整示例
 
 ```yaml
+# 配置格式版本，必填，必须带引号（major.minor）。规则见 docs/VERSIONING.md
+schemaVersion: '1.0'
+
 # 所有相对路径的基准目录（默认：含此文件的目录）
 # projectRoot: .
 
@@ -27,9 +30,26 @@ outputs:
 
 ## 字段说明
 
+### schemaVersion（必填）
+
+配置格式版本，格式为 `major.minor`，**必须带引号**：
+
+```yaml
+schemaVersion: '1.0'
+```
+
+- 缺失 → 直接报错退出，不生成任何产物
+- 格式非法（`1`、`1.0.0`、`v1`）→ 报错
+- major 与当前 polyforge 不兼容 → 报错并提示升级
+- 兼容判定只看 major：polyforge `1.x.y` 接受 `1.*`
+
+为什么不给默认值：默认值会重蹈 `basePackage` 的覆辙——默认值恰好等于当前唯一取值时，格式漂移永远不会暴露。强制声明让每次配置格式升级都有显式确认点。完整规则见 [VERSIONING.md](../VERSIONING.md)。
+
+> ⚠️ YAML 陷阱：不加引号的 `1.0` 会被解析成数字 `1`。代码对数字 `1` 做了兜底兼容，但**推荐始终带引号**。
+
 ### source
 
-契约源。**只支持 git 形式**——polyforge 会把契约仓库 clone 到 `.polyforge/cache/` 并缓存，然后递归扫描里面的 `.yaml`。
+契约源。**只支持 git 形式**——polyforge 会把契约仓库 clone 到系统临时目录下的共享缓存（见下节），然后递归扫描里面的 `.yaml`。
 
 ```yaml
 source:
@@ -41,7 +61,7 @@ source:
 | 字段 | 必填 | 含义 |
 |---|---|---|
 | `git` | 是 | git 仓库地址（ssh 或 https 均可，取决于本机凭证） |
-| `ref` | 否，默认 `main` | branch → 每次 pull；commit/tag → 缓存命中即用（不可变，适合 CI） |
+| `ref` | 否，默认 `main` | branch → 探测远程同版本则跳过，否则 fetch；commit/tag → 不可变，本地有即用（适合 CI） |
 | `path` | 否，默认 `.` | 契约在仓库内的子目录 |
 
 **为什么只支持 git**：本地路径 fallback 会导致不同消费方拉到不同版本的契约，生成物不一致。见下方「环境变量」的测试用例外。
@@ -50,14 +70,26 @@ source:
 
 ### source 的缓存
 
+缓存在**系统临时目录**，跨项目共享：
+
 ```
-.polyforge/cache/<repo-name>-<ref>/   # clone 的契约仓库
+<tmp>/polyforge-cache-<user>/<repo-name>-<url-hash>-<ref>/
 ```
 
-- `ref` 是 branch：每次 gen 前 `git pull --ff-only`
-- `ref` 是 commit/tag：命中缓存即用，不更新
+契约仓库与具体项目无关，同一台机器上 client / server / 其他项目共用一份 clone。`url-hash` 保证不同仓库即使同名也不撞车。
+
+**更新策略——同版本跳过网络传输**：
+
+| `ref` 类型 | 行为 |
+|---|---|
+| branch | `ls-remote` 探测远程 HEAD sha，与本地 HEAD 相同则跳过；不同才 `fetch` + `reset --hard` |
+| tag / commit | 不可变。本地已有该 commit 对象即用，没有才 `fetch` |
+
+第二次及以后的 `gen` 只花一次 `ls-remote` 往返，不传仓库内容。
+
 - 缓存损坏（比如手动改过）时：删掉对应目录后重跑
-- **`.polyforge/` 应加进 `.gitignore`**
+- `POLYFORGE_CACHE` 可覆盖缓存根目录（CI 里指向持久化目录）
+- **缓存不入库**：它在系统临时目录，不在任何项目里
 
 ### 契约仓库的结构要求
 
@@ -99,7 +131,7 @@ source:
 
 | 键 | 含义 |
 |---|---|
-| `basePackage` | 生成的 Java 包名前缀 |
+| `basePackage` | 生成的 Java 包名前缀。实体/DTO/Mapper/Assembler/Service/Controller 的 `package` 行和跨类 import 都由它派生。缺失时 `gen --target=backend` 会报错退出。 |
 | `generatedDir` | 全自动产物目录（每次 gen 重建） |
 | `handServiceDir` | 手写实现目录（Service 骨架首次生成后保护） |
 
@@ -108,6 +140,24 @@ source:
 | 键 | 含义 |
 |---|---|
 | `flyway` | 建表 SQL 的输出目录。polyforge 会写一个 `V900__generated_tables.sql` |
+
+### outputs.openapi
+
+一个目录字符串（不是对象）。polyforge 会在其下生成 `openapi.json`（OpenAPI 3.0.3 格式）。
+
+```yaml
+outputs:
+  openapi: docs/api/openapi.json
+```
+
+### outputs 的取值形态
+
+| target | 形态 | 例 |
+|---|---|---|
+| `frontend` | 对象（3 个子路径） | `{ types, requestMap, validators }` |
+| `backend` | 对象（3 个子路径） | `{ basePackage, generatedDir, handServiceDir }` |
+| `db` | 对象（1 个子路径） | `{ flyway }` |
+| `openapi` | **字符串** | `docs/api/openapi.json` |
 
 ## 只生成一部分
 

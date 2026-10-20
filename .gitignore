@@ -4,7 +4,7 @@ node_modules/
 # 测试临时目录（tests/run.mjs 每个 case 创建后删除，异常中断时可能残留）
 tests/.tmp/
 
-# 运行时工作目录（clone 的契约缓存 + manifest）
+# 运行时工作目录（快照等）。契约 clone 缓存在系统临时目录，不在这里。
 .polyforge/
 
 # 日志
@@ -27,6 +27,9 @@ Thumbs.db
 # 构建产物（如果有）
 dist/
 coverage/
+
+# npm pack 产物
+*.tgz
 
 # 本地环境变量
 .env

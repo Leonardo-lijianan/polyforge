@@ -1,5 +1,5 @@
 /**
- * Java Mapper 生成器
+ * Java 视图 Assembler 生成器
  * IR → 视图映射骨架
  *
  * 对带 from 声明的视图，生成映射方法骨架：
@@ -8,6 +8,10 @@
  * 人只需填 TODO，其余自动。
  *
  * 输出：generated/assembler/XxxAssembler.java
+ *
+ * 命名说明：本文件曾叫 mapper.mjs，但生成的类一直叫 XxxAssembler。
+ * 迁 MyBatis-Plus 后 mapper 一词被 DAO 占用，故改名 view-assembler，
+ * 导出 generateJavaAssembler。
  */
 import { writeFileSync, mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -17,11 +21,6 @@ const HEADER = [
   '// 源：模型定义的 views（from 声明）',
   '',
 ]
-
-const PKG = 'com.we.engine.server.generated.assembler'
-const PKG_DTO = 'com.we.engine.server.generated.dto'
-const PKG_ENTITY = 'com.we.engine.server.generated.entity'
-const PKG_ENUM = 'com.we.engine.server.generated.enums'
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function lower(s) { return s.charAt(0).toLowerCase() + s.slice(1) }
@@ -42,7 +41,10 @@ function entityFieldJavaType(fd) {
 /** 视图字段 → Java 类型名 */
 function viewFieldJavaType(fd) {
   if (!fd) return 'String'
-  if (fd.type === 'id') return (fd.idType === 'long' || !fd.idType) ? 'Long' : 'String'
+  // 视图 DTO 的 id 一律 String（与 dto.mjs 的 PRIM.id 一致）。
+  // 不读 idType：build-ir 已对视图字段剥离 idType（withIdType: false）。
+  // 否则 Long → String 的转换会被跳过，生成类型不匹配的代码。
+  if (fd.type === 'id') return 'String'
   const map = {
     string: 'String', text: 'String', int: 'Integer', long: 'Long',
     number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean',
@@ -59,14 +61,12 @@ function buildExpr(fromRef, entField, viewField, entityVar) {
   const entType = entityFieldJavaType(entField)
   const viewType = viewFieldJavaType(viewField)
   if (entType === viewType) return getter
-  // Long → String 转换
   if (entType === 'Long' && viewType === 'String') return 'String.valueOf(' + getter + ')'
   if (entType === 'Integer' && viewType === 'String') return 'String.valueOf(' + getter + ')'
-  // 其他：留 TODO
   return getter + ' /* TODO 类型转换: ' + entType + ' → ' + viewType + ' */'
 }
 
-function renderMapper(viewName, view, ir) {
+function renderAssembler(viewName, view, ir, PKG, PKG_DTO, PKG_ENTITY) {
   const fields = view.fields || {}
 
   // 收集用到的实体
@@ -75,7 +75,7 @@ function renderMapper(viewName, view, ir) {
     if (fd.from) usedEntities.add(String(fd.from).split('.')[0])
   }
 
-  // 无 from 且无 entity 依赖 → 不生成 mapper
+  // 无 from 且无 entity 依赖 → 不生成 assembler
   if (usedEntities.size === 0) return null
 
   const entityParams = [...usedEntities].sort().map((e) => e + ' ' + lower(e))
@@ -112,7 +112,6 @@ function renderMapper(viewName, view, ir) {
       argLines.push('                null,   // TODO: ' + fn + '（无来源）')
     }
   }
-  // 去掉最后一行的逗号（逗号在行中、注释之前，需按 , 分割处理）
   if (argLines.length > 0) {
     const last = argLines.length - 1
     argLines[last] = argLines[last].replace(/,(\s*\/\/)/, '$1')
@@ -124,7 +123,10 @@ function renderMapper(viewName, view, ir) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaMapper(ir, outRoot) {
+export function generateJavaAssembler(ir, outRoot, basePackage) {
+  const PKG = basePackage + '.generated.assembler'
+  const PKG_DTO = basePackage + '.generated.dto'
+  const PKG_ENTITY = basePackage + '.generated.entity'
   const dir = join(outRoot, 'assembler')
   // 清理旧产物，保证目录内容与当前 IR 一致
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
@@ -132,7 +134,7 @@ export function generateJavaMapper(ir, outRoot) {
 
   let count = 0
   for (const [name, view] of ir.views) {
-    const code = renderMapper(name, view, ir)
+    const code = renderAssembler(name, view, ir, PKG, PKG_DTO, PKG_ENTITY)
     if (code) {
       writeFileSync(join(dir, name + 'Assembler.java'), code, 'utf-8')
       count++

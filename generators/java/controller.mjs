@@ -20,10 +20,7 @@ const HEADER = [
   '',
 ]
 
-const PKG = 'com.we.engine.server.generated.controller'
-const PKG_SERVICE = 'com.we.engine.server.generated.service'
-const PKG_DTO = 'com.we.engine.server.generated.dto'
-const PKG_RESP = 'com.we.engine.server.dtos'
+// 包名由 generateJavaController 的 basePackage 参数派生（见文件末尾）
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function camel(s) { return s.split(/[-_]/).filter(Boolean).map(cap).join('') }
@@ -120,7 +117,7 @@ function groupByDomain(apis) {
   return map
 }
 
-function renderController(domain, apis) {
+function renderController(domain, apis, PKG, PKG_SERVICE, PKG_DTO, PKG_RESP) {
   const name = camel(domain) + 'Controller'
   const svc = serviceName(domain)
   const svcVar = serviceVar(domain)
@@ -181,7 +178,11 @@ function renderController(domain, apis) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaController(ir, outRoot) {
+export function generateJavaController(ir, outRoot, basePackage) {
+  const PKG = basePackage + '.generated.controller'
+  const PKG_SERVICE = basePackage + '.generated.service'
+  const PKG_DTO = basePackage + '.generated.dto'
+  const PKG_RESP = basePackage + '.dtos'
   const dir = join(outRoot, 'controller')
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
@@ -189,7 +190,7 @@ export function generateJavaController(ir, outRoot) {
   let count = 0
   for (const [domain, apis] of byDomain) {
     const name = camel(domain) + 'Controller'
-    writeFileSync(join(dir, name + '.java'), renderController(domain, apis), 'utf-8')
+    writeFileSync(join(dir, name + '.java'), renderController(domain, apis, PKG, PKG_SERVICE, PKG_DTO, PKG_RESP), 'utf-8')
     count++
   }
   console.log('  [java/controller] ' + count + ' 个 Controller → ' + dir)

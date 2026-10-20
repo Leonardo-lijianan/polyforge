@@ -33,6 +33,7 @@ const EXPECT = {
   'ref-resolve.yaml': [],
   'ref-weak-edge.yaml': [],
   'ref-bad-target.yaml': ['引用不存在'],
+  'alter-basic.yaml': [],
 }
 
 /** 期望输出里「不应出现」的子串 */
@@ -66,7 +67,13 @@ for (const file of readdirSync(CASES_DIR).sort()) {
   const notWant = NOT_EXPECT[file] || []
   const missing = want.filter((s) => !output.includes(s))
   const unexpected = notWant.filter((s) => output.includes(s))
-  const ok = missing.length === 0 && unexpected.length === 0
+
+  // 退出码校验：EXPECT 为空 = 期望模型合法，check 应通过（status 0）；
+  // 非空 = 期望报错，check 应失败（status 非 0）。
+  // 缺了这条，一个「校验失败但输出里没有期望子串」的 case 会被误判 PASS。
+  const expectOk = want.length === 0
+  const statusOk = expectOk ? res.status === 0 : res.status !== 0
+  const ok = statusOk && missing.length === 0 && unexpected.length === 0
 
   if (ok) {
     pass++
@@ -74,6 +81,7 @@ for (const file of readdirSync(CASES_DIR).sort()) {
   } else {
     fail++
     console.log('  => FAIL')
+    if (!statusOk) console.log('     退出码不符: 期望 ' + (expectOk ? '0' : '非 0') + '，实际 ' + res.status)
     if (missing.length) console.log('     缺少期望: ' + missing.join(', '))
     if (unexpected.length) console.log('     不应出现: ' + unexpected.join(', '))
   }

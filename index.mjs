@@ -8,14 +8,13 @@
  *   polyforge gen                       # 校验 + 生成（全部目标）
  *   polyforge gen --target=frontend     # 只生成前端
  *   polyforge gen --target=backend|db   # 只生成后端 / 只生成迁移
- *   polyforge verify [--target=...]     # 校验生成物 MD5
  *
  * 配置：项目根目录 polyforge.config.yaml（优先）或 polyforge.config.mjs（兼容）
  */
 import { loadConfig } from './config.mjs'
 import { resolveSourceDir } from './source.mjs'
-import { createHash } from 'crypto'
-import { readdirSync, statSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs'
+import { extractSnapshot, diffSnapshots, readSnapshot, writeSnapshot } from './snapshot.mjs'
+import { existsSync, rmSync } from 'fs'
 import { join } from 'path'
 import { loadAll } from './parser/load.mjs'
 import { validateSchema } from './parser/schema-validator.mjs'
@@ -27,10 +26,13 @@ import { generateFrontendValidators } from './generators/frontend/validators.mjs
 import { generateJavaEntity } from './generators/java/entity.mjs'
 import { generateJavaDto } from './generators/java/dto.mjs'
 import { generateJavaFlyway } from './generators/java/flyway.mjs'
-import { generateJavaMapper } from './generators/java/mapper.mjs'
-import { generateJavaRepository } from './generators/java/repository.mjs'
+import { writeDbSchemaState, generateAlterSql } from './generators/java/alter.mjs'
+import { generateJavaMapper } from './generators/java/dao-mapper.mjs'
+import { generateJavaAssembler } from './generators/java/view-assembler.mjs'
 import { generateJavaService } from './generators/java/service.mjs'
 import { generateJavaController } from './generators/java/controller.mjs'
+import { generateJavaMetaObjectHandler } from './generators/java/handler.mjs'
+import { generateOpenApi } from './generators/openapi/index.mjs'
 
 function printDiagnostics(result) {
   for (const w of result.warnings) console.warn('  [warn]  ' + w)
@@ -47,33 +49,14 @@ function serializeIR(ir) {
   }
 }
 
-function getFileHash(filePath) {
-  const content = readFileSync(filePath)
-  return createHash('md5').update(content).digest('hex')
-}
-
-function walkDir(dir) {
-  let results = []
-  if (!existsSync(dir)) return results
-  const list = readdirSync(dir)
-  for (const file of list) {
-    const fullPath = join(dir, file)
-    const stat = statSync(fullPath)
-    if (stat && stat.isDirectory()) {
-      results = results.concat(walkDir(fullPath))
-    } else {
-      results.push(fullPath)
-    }
-  }
-  return results
-}
-
 async function main() {
   const cmd = process.argv[2] || 'check'
   // --target=frontend|backend|db|all（默认 all，向后兼容）
   const targetArg = process.argv.find((a) => a.startsWith('--target='))
   const target = targetArg ? targetArg.split('=')[1] : 'all'
-  const VALID_TARGETS = ['all', 'frontend', 'backend', 'db']
+  // --allow-breaking：显式允许破坏性变更（CI 里谨慎使用）
+  const allowBreaking = process.argv.includes('--allow-breaking')
+  const VALID_TARGETS = ['all', 'frontend', 'backend', 'db', 'openapi']
   if (!VALID_TARGETS.includes(target)) {
     console.error('[polyforge] --target 只接受: ' + VALID_TARGETS.join(' | '))
     process.exit(1)
@@ -133,14 +116,62 @@ async function main() {
   }
 
   if (cmd === 'gen') {
+    // ============ 破坏性变更检测 ============
+    // 仅在 gen 时执行：check 不写快照，也不阻断（避免本地临时改动被误报）
+    const newSnap = extractSnapshot(ir)
+    const oldSnap = readSnapshot(config.projectRoot)
+    if (oldSnap) {
+      const breaks = diffSnapshots(oldSnap, newSnap)
+      if (breaks.length > 0) {
+        console.error('')
+        console.error('[polyforge] 检测到 ' + breaks.length + ' 处破坏性变更：')
+        for (const b of breaks) console.error('  [BREAKING] ' + b.location + ' — ' + b.detail)
+        console.error('')
+        if (allowBreaking) {
+          console.warn('[polyforge] --allow-breaking 已指定，将继续生成并覆盖旧快照。')
+        } else {
+          console.error('[polyforge] 已阻断生成。')
+          console.error('[polyforge] 如果这是有意变更，请加 --allow-breaking 重跑：')
+          console.error('  node polyforge/index.mjs gen --allow-breaking')
+          process.exit(1)
+        }
+      }
+    }
+    // 快照等生成全部成功后再写（见本函数末尾）。
+    // 原因：若生成中途崩溃，本次不能把新快照落盘——否则下次重跑拿「新 IR」对比「新快照」
+    // 会 diff 为空，那次破坏性变更从此静默失效。等到生成完整通过再写，崩溃后重跑仍会重新 diff 并阻断。
+
     const out = config.outputs
     const wantFrontend = target === 'all' || target === 'frontend'
     const wantBackend = target === 'all' || target === 'backend'
     const wantDb = target === 'all' || target === 'db'
+    const wantOpenapi = target === 'all' || target === 'openapi'
 
     const fe = out.frontend
     const be = out.backend
     const db = out.db
+
+    // basePackage 校验必须放在清空目录之前：
+    // 否则配置缺失时会先 rmSync 掉 generatedDir，再报错退出，留下空目录。
+    if (wantBackend && be && !be.basePackage) {
+      console.error('  [error] outputs.backend.basePackage 未配置，无法生成 Java 代码')
+      process.exit(1)
+    }
+
+    // 生成前清空「全自动目录」：这些目录的承诺是「可整体删除重建」。
+    // 不清空的后果：契约删掉一个 view/entity 后，旧的 FooBrief.ts / FooDto.java 会永久残留，
+    // type-check / mvn compile 都不会报错，但它们已经和契约脱节。
+    // db.flyway 不动：增量迁移（V901__alter）会往同一目录追加，清空会误删；留到 B3 一起处理。
+    // handServiceDir 不动：手写 ServiceImpl 受保护。
+    const cleanDirs = []
+    if (wantFrontend && fe) {
+      for (const d of [fe.types, fe.requestMap, fe.validators]) if (d) cleanDirs.push(d)
+    }
+    if (wantBackend && be && be.generatedDir) cleanDirs.push(be.generatedDir)
+    for (const d of cleanDirs) {
+      if (existsSync(d)) rmSync(d, { recursive: true, force: true })
+    }
+
     if (wantFrontend && fe && (fe.types || fe.requestMap || fe.validators)) {
       console.log('')
       console.log('[polyforge] 生成前端...')
@@ -152,116 +183,59 @@ async function main() {
     if (wantBackend && be) {
       console.log('')
       console.log('[polyforge] 生成后端...')
-      generateJavaEntity(ir, be.generatedDir)
-      generateJavaDto(ir, be.generatedDir)
-      generateJavaRepository(ir, be.generatedDir)
-      generateJavaMapper(ir, be.generatedDir)
-      generateJavaService(ir, be.generatedDir, be.handServiceDir)
-      generateJavaController(ir, be.generatedDir)
+      generateJavaEntity(ir, be.generatedDir, be.basePackage)
+      generateJavaDto(ir, be.generatedDir, be.basePackage)
+      generateJavaMapper(ir, be.generatedDir, be.basePackage)
+      generateJavaAssembler(ir, be.generatedDir, be.basePackage)
+      generateJavaService(ir, be.generatedDir, be.handServiceDir, be.basePackage)
+      generateJavaController(ir, be.generatedDir, be.basePackage)
+      generateJavaMetaObjectHandler(ir, be.handServiceDir, be.basePackage)
     }
     if (wantDb && db?.flyway) {
       console.log('')
       console.log('[polyforge] 生成数据库迁移...')
-      generateJavaFlyway(ir, db.flyway)
-    }
-
-    // 生成 MD5 清单。
-    // 每个 target 是独立的完整生成器，各自记自己的 manifest 段：
-    //   .polyforge/manifest.json = { frontend: {...}, backend: {...}, db: {...} }
-    // gen --target=frontend 只重写 frontend 段，不碰 backend / db。
-    const manifestDir = join(config.projectRoot, '.polyforge')
-    mkdirSync(manifestDir, { recursive: true })
-    const manifestPath = join(manifestDir, 'manifest.json')
-    const manifest = existsSync(manifestPath)
-      ? JSON.parse(readFileSync(manifestPath, 'utf-8'))
-      : {}
-
-    const targetsToWrite = target === 'all' ? ['frontend', 'backend', 'db'] : [target]
-    for (const t of targetsToWrite) {
-      if (t === 'frontend' && wantFrontend && fe) {
-        const dirs = [fe.types, fe.requestMap, fe.validators].filter(Boolean)
-        const section = {}
-        for (const dir of dirs) {
-          for (const f of walkDir(dir)) {
-            const rel = f.replace(config.projectRoot, '').replace(/\\/g, '/').replace(/^\//, '')
-            section[rel] = getFileHash(f)
+      // B3 增量迁移：
+      //   state 不存在 → 首次，生成 V900 基线 + 写 state
+      //   state 存在   → 对比 state 与当前 IR，有变更则生成 V901+__alter_generated.sql，不动 V900
+      const statePath = join(config.projectRoot, '.polyforge', 'db-schema-state.json')
+      if (!existsSync(statePath)) {
+        generateJavaFlyway(ir, db.flyway)
+        writeDbSchemaState(ir, statePath)
+        console.log('[polyforge] DB schema state 已初始化 -> .polyforge/db-schema-state.json')
+      } else {
+        const res = generateAlterSql(ir, db.flyway, statePath, { allowBreaking })
+        if (res.blocked) {
+          console.error('')
+          console.error('[polyforge] DB 增量迁移检测到 ' + res.breaking.length + ' 处破坏性变更：')
+          for (const c of res.breaking) {
+            console.error('  [BREAKING] ' + c.kind + ' on ' + c.table + (c.column ? '.' + c.column : c.index ? ' #' + c.index : ''))
           }
+          console.error('')
+          console.error('[polyforge] 已阻断生成。如果这是有意变更，加 --allow-breaking 重跑。')
+          process.exit(1)
         }
-        manifest.frontend = section
-      } else if (t === 'backend' && wantBackend && be) {
-        const dirs = [be.generatedDir].filter(Boolean)
-        const section = {}
-        for (const dir of dirs) {
-          for (const f of walkDir(dir)) {
-            const rel = f.replace(config.projectRoot, '').replace(/\\/g, '/').replace(/^\//, '')
-            section[rel] = getFileHash(f)
-          }
+        if (res.outFile) {
+          console.log('[polyforge] 增量迁移已生成 -> ' + res.outFile + '（' + res.changes.length + ' 处变更）')
+        } else {
+          console.log('[polyforge] DB schema 无变化，跳过增量迁移')
         }
-        manifest.backend = section
-      } else if (t === 'db' && wantDb && db) {
-        const dirs = [db.flyway].filter(Boolean)
-        const section = {}
-        for (const dir of dirs) {
-          for (const f of walkDir(dir)) {
-            const rel = f.replace(config.projectRoot, '').replace(/\\/g, '/').replace(/^\//, '')
-            section[rel] = getFileHash(f)
-          }
-        }
-        manifest.db = section
       }
     }
-    writeFileSync(manifestPath, JSON.stringify(manifest, null, 2), 'utf-8')
-    const counts = Object.entries(manifest).map(([k, v]) => k + '=' + Object.keys(v).length).join(' / ')
-    console.log('[polyforge] 生成 MD5 校验清单 -> ' + manifestPath + '（target=' + target + '，' + counts + '）')
+    if (wantOpenapi && out.openapi) {
+      console.log('')
+      console.log('[polyforge] 生成 OpenAPI...')
+      generateOpenApi(ir, out.openapi)
+    }
+
+    // 生成全部成功，才把新快照落盘（事务式：生成失败 → 快照保持旧值 → 下次重跑仍会 diff）
+    writeSnapshot(config.projectRoot, newSnap)
+    console.log('[polyforge] 契约快照已更新 -> .polyforge/schema-snapshot.json')
 
     console.log('')
     console.log('[polyforge] 完成')
     return
   }
 
-  if (cmd === 'verify') {
-    console.log('')
-    console.log('[polyforge] 校验生成物 MD5...')
-    const manifestPath = join(config.projectRoot, '.polyforge', 'manifest.json')
-    if (!existsSync(manifestPath)) {
-      console.error('  [error] 缺少 .polyforge/manifest.json，请先运行 polyforge:gen')
-      process.exit(1)
-    }
-    // manifest 结构：{ frontend: {path: hash}, backend: {...}, db: {...} }
-    // 每个 target 独立一段。--target 只校验对应段，all 校验全部段。
-    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'))
-    const sections = target === 'all'
-      ? Object.keys(manifest)
-      : [target].filter((t) => manifest[t])
-    if (sections.length === 0) {
-      console.error('  [error] manifest 里没有 target=' + target + ' 的段，先运行 polyforge:gen --target=' + target)
-      process.exit(1)
-    }
-    let errors = 0
-    let checked = 0
-    for (const section of sections) {
-      for (const [relPath, expectedHash] of Object.entries(manifest[section])) {
-        checked++
-        const absPath = join(config.projectRoot, relPath)
-        if (!existsSync(absPath)) {
-          console.error('  [error] [' + section + '] 文件缺失: ' + relPath)
-          errors++
-          continue
-        }
-        const actualHash = getFileHash(absPath)
-        if (actualHash !== expectedHash) {
-          console.error('  [error] [' + section + '] 文件被篡改: ' + relPath)
-          errors++
-        }
-      }
-    }
-    if (errors > 0) {
-      console.error('[polyforge] MD5 校验失败: ' + errors + ' 个文件被手动修改或删除')
-      process.exit(1)
-    }
-    console.log('[polyforge] ' + checked + ' 个文件 MD5 校验通过（target=' + target + '，段: ' + sections.join(', ') + '）')
-    return
-  }
 }
 
 main().catch((err) => {

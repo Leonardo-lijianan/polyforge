@@ -1,9 +1,12 @@
 /**
- * Java Mapper 生成器（MyBatis-Plus DAO）
+ * Java MyBatis-Plus Mapper 生成器（DAO）
  * IR → BaseMapper 接口
  *
  * 输出：generated/mapper/XxxMapper.java
  * 主键类型跟随实体的 idType。
+ *
+ * 命名说明：本文件曾叫 repository.mjs（JPA 时代），迁 MyBatis-Plus 后
+ * 生成的是 BaseMapper，故改名 dao-mapper，导出 generateJavaMapper。
  */
 import { writeFileSync, mkdirSync, existsSync, rmSync } from 'fs'
 import { join } from 'path'
@@ -13,9 +16,6 @@ const HEADER = [
   '// 源：模型定义的 entities 段',
   '',
 ]
-
-const PKG = 'com.we.engine.server.generated.mapper'
-const PKG_ENTITY = 'com.we.engine.server.generated.entity'
 
 /** 主键 Java 类型（C18 保证每个实体恰有一个 id 字段） */
 function idJavaType(entity) {
@@ -66,7 +66,7 @@ function indexFinders(entity) {
   return out
 }
 
-function renderMapper(name, entity) {
+function renderMapper(name, entity, PKG, PKG_ENTITY) {
   const idType = idJavaType(entity)
   const finders = uniqueFinders(entity)
   const idxFinders = indexFinders(entity)
@@ -101,7 +101,9 @@ function renderMapper(name, entity) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaRepository(ir, outRoot) {
+export function generateJavaMapper(ir, outRoot, basePackage) {
+  const PKG = basePackage + '.generated.mapper'
+  const PKG_ENTITY = basePackage + '.generated.entity'
   const dir = join(outRoot, 'mapper')
   // 清理旧产物：mapper 目录可能残留旧版视图映射器；repository 目录是 JPA 时代残留（已迁 MyBatis-Plus）
   if (existsSync(dir)) rmSync(dir, { recursive: true, force: true })
@@ -111,7 +113,7 @@ export function generateJavaRepository(ir, outRoot) {
 
   let count = 0
   for (const [name, entity] of ir.entities) {
-    writeFileSync(join(dir, name + 'Mapper.java'), renderMapper(name, entity), 'utf-8')
+    writeFileSync(join(dir, name + 'Mapper.java'), renderMapper(name, entity, PKG, PKG_ENTITY), 'utf-8')
     count++
   }
   console.log('  [java/mapper] ' + count + ' 个 Mapper → ' + dir)

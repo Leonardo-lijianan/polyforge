@@ -54,9 +54,11 @@ entities:
 消费方项目根建 `polyforge.config.yaml`：
 
 ```yaml
+schemaVersion: '1.0'     # 配置格式版本，必填，必须带引号
+
 source:
   git: git@github.com:org/model-repo.git
-  ref: main              # branch → 每次 pull；commit/tag → 缓存命中即用
+  ref: main              # branch → 先探测远程，同版本跳过；commit/tag → 不可变
   # path: .              # 可选，契约在仓库子目录时指定
 
 outputs:
@@ -78,7 +80,7 @@ outputs:
 node polyforge/index.mjs gen
 ```
 
-首次运行会 clone 契约仓库到 `.polyforge/cache/`，之后 `ref` 是 branch 时每次 `pull`。
+首次运行会 clone 契约仓库到**系统临时目录**（`<tmp>/polyforge-cache-<user>/`），跨项目共享。之后 `ref` 是 branch 时先 `ls-remote` 探测，同版本直接复用，不同才 `fetch`。
 
 只想生成前端：
 
@@ -97,13 +99,13 @@ src/generated/types/
   index.ts
 ```
 
-`.polyforge/manifest.json` 按 target 分段记录 MD5：
+生成物是全自动产物，下次 `gen` 会整体重建。要检测「契约变了但忘记重新 gen」：
 
-```json
-{ "frontend": { "src/generated/types/user.ts": "md5..." } }
+```bash
+node polyforge/index.mjs gen && git diff --exit-code
 ```
 
-`node polyforge/index.mjs verify --target=frontend` 可校验生成物未被手改。
+产物有变化 → `git diff` 非空 → 退出码 1，适合作为 CI 门禁。
 
 ## 下一步
 

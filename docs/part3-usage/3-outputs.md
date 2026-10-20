@@ -9,7 +9,7 @@ gen 会往配置的输出目录写文件。本章说明写了什么、以及「�
 | target | 产物 |
 |---|---|
 | `frontend` | TS 类型、请求映射、表单校验规则 |
-| `backend` | 实体、DTO、Repository、Mapper、Service 接口、Controller |
+| `backend` | 实体、DTO、Mapper（DAO）、Assembler、Service 接口、Controller |
 | `db` | Flyway 建表 SQL |
 
 `polyforge gen --target=frontend` 只碰前端三个目录，不碰后端和 SQL。
@@ -20,7 +20,7 @@ polyforge 的产物分两类，命运完全不同：
 
 | 类型 | 会被 gen 覆盖吗 | 例 |
 |---|---|---|
-| **全自动产物** | 会（每次重建） | 实体、DTO、Mapper、Repository、Controller、TS 类型、SQL |
+| **全自动产物** | 会（每次重建） | 实体、DTO、Mapper、Assembler、Controller、TS 类型、SQL |
 | **手写骨架** | 只首次创建，之后保护 | Service 实现（`*ServiceImpl.java`） |
 
 ## 全自动产物
@@ -37,10 +37,11 @@ polyforge 的产物分两类，命运完全不同：
 |---|---|---|
 | 枚举、实体 | `generated/enums`、`generated/entity` | `java/entity` |
 | DTO（视图） | `generated/dto` | `java/dto` |
-| 仓库 | `generated/repository` | `java/repository` |
-| 映射器 | `generated/mapper` | `java/mapper` |
+| MyBatis-Plus Mapper（DAO） | `generated/mapper` | `java/dao-mapper` |
+| 视图 Assembler | `generated/assembler` | `java/view-assembler` |
 | Service 接口 | `generated/service` | `java/service` |
 | 控制器 | `generated/controller` | `java/controller` |
+| MetaObjectHandler 骨架 | `handServiceDir/config` | `java/handler`（首次创建后保护） |
 | 建表 SQL | `outputs.db.flyway` | `java/flyway` |
 | TS 类型 | `outputs.frontend.types` | `frontend/types` |
 | 请求映射 | `outputs.frontend.requestMap` | `frontend/requestMap` |

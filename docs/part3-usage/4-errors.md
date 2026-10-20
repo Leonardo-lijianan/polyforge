@@ -23,14 +23,14 @@ flowchart TD
 
 在**读模型之前**就可能失败，与模型内容无关：
 
-```
-[polyforge] 异常: Error: 未找到 source 配置。请在 polyforge.config.yaml 里声明 source: <模型目录>，或用环境变量 POLYFORGE_SOURCE=<目录> 临时指定。
-```
-
 | 报错 | 原因 | 修法 |
 |---|---|---|
-| `未找到 source 配置` | config 里没写 `source`，环境变量也没设 | 在 `polyforge.config.yaml` 补 `source: model` |
-| `--target 只接受: all \| frontend \| backend \| db` | 传了非法 target | 用四个合法值之一 |
+| `配置文件 ... 缺少 schemaVersion 字段` | 没写 `schemaVersion` | 顶层加 `schemaVersion: '1.0'` |
+| `schemaVersion="..." 格式非法` | 写成了 `1`、`1.0.0`、`v1` | 改成带引号的 `'1.0'` |
+| `schemaVersion=... 不受当前 polyforge 支持` | major 不匹配 | 升级 polyforge 或迁移配置 |
+| `未找到 source 配置` | config 里没写 `source.git`，环境变量也没设 | 按文档补 `source: { git, ref }` |
+| `source 不支持字符串（本地路径）形式` | 写了 `source: <路径>` | 改为 git 形式；本地调试用 `POLYFORGE_SOURCE` |
+| `--target 只接受: all \| frontend \| backend \| db \| openapi` | 传了非法 target | 用五个合法值之一 |
 | `YAMLException: ...` | `polyforge.config.yaml` 语法错 | 检查缩进、冒号后的空格 |
 | `Cannot find module 'js-yaml'` | 依赖没装 | `npm i` |
 
@@ -50,7 +50,7 @@ schema 阶段用 JSON Schema 校验文档结构。典型：
 
 ## 校验错误（C 编号）
 
-语义校验的每条规则有编号（C1 ~ C29），输出形如：
+语义校验的每条规则有编号（C1 ~ C32），输出形如：
 
 ```
 [error] C18 缺少主键: 实体 User 没有 type:id 字段

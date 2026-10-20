@@ -1,11 +1,12 @@
 /**
  * Java Entity + Enum 生成器
- * IR → JPA @Entity + enum
+ * IR → MyBatis-Plus 实体 + enum
  *
  * 约定：
- *   - 主键 id：默认 Long 自增；idType: string/uuid 时为 String（业务生成）
- *   - @Column 携带 nullable / unique / length
- *   - 时间：OffsetDateTime，auto:create 加 @CreationTimestamp
+ *   - 主键 id：默认 Long 自增（@TableId AUTO）；idType: string/uuid 时为 String
+ *   - 列名走 @TableField(camelToSnake(fn))
+ *   - 时间：OffsetDateTime，auto:create/update 走 @TableField(fill=...)
+ *     需配合 MetaObjectHandler（handler.mjs 生成骨架）才能生效
  */
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -16,8 +17,7 @@ const HEADER = [
   '',
 ]
 
-const PKG_ENUM = 'com.we.engine.server.generated.enums'
-const PKG_ENTITY = 'com.we.engine.server.generated.entity'
+// 包名由 generateJavaEntity 的 basePackage 参数派生（见文件末尾）
 
 // 注：entity 不再有 json（C26 禁）或 array（拆子表）字段
 const PRIM = {
@@ -50,23 +50,12 @@ function javaTypeByRef(name, resolved) {
   throw new Error('无法映射实体字段引用类型: ' + name + '（kind=' + resolved.kind + '）')
 }
 
-/** 构建 @Column 参数串 */
-function columnAttrs(fn, fd) {
-  const attrs = ['name = "' + camelToSnake(fn) + '"']
-  // create 时间不可更新；update 时间可更新
-  if (fd.auto === 'create') attrs.push('updatable = false')
-  else if (!fd.nullable) attrs.push('nullable = false')
-  if (fd.unique) attrs.push('unique = true')
-  if (fd.length) attrs.push('length = ' + fd.length)
-  return attrs.join(', ')
-}
-
 /**
  * 枚举生成：Java 常量名大写（符合惯例，供 @PreAuthorize / JWT 用），
  * 同时保留契约里的原始值，通过 @JsonValue/@JsonCreator 做 JSON 桥接。
  * 前端始终收发契约里的小写值，Java 侧仍是标准枚举。
  */
-function renderEnum(name, def) {
+function renderEnum(name, def, PKG_ENUM) {
   const vals = def.values
   const lines = [...HEADER]
   lines.push('package ' + PKG_ENUM + ';')
@@ -102,15 +91,13 @@ function renderEnum(name, def) {
   return lines.join('\n') + '\n'
 }
 
-function renderEntity(name, def) {
+function renderEntity(name, def, PKG_ENTITY, PKG_ENUM) {
   const fields = def.fields || {}
   const usedEnums = new Set()
   for (const fd of Object.values(fields)) {
     if (fd.resolved?.kind === 'enum') usedEnums.add(fd.resolved.target)
     if (fd.resolvedOf?.kind === 'enum') usedEnums.add(fd.resolvedOf.target)
   }
-  const hasCreate = Object.values(fields).some((fd) => fd.auto === 'create')
-  const hasUpdate = Object.values(fields).some((fd) => fd.auto === 'update')
   const usesList = Object.values(fields).some((fd) => fd.of)
 
   const lines = [...HEADER]
@@ -156,7 +143,9 @@ function renderEntity(name, def) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaEntity(ir, outRoot) {
+export function generateJavaEntity(ir, outRoot, basePackage) {
+  const PKG_ENUM = basePackage + '.generated.enums'
+  const PKG_ENTITY = basePackage + '.generated.entity'
   const enumDir = join(outRoot, 'enums')
   const entityDir = join(outRoot, 'entity')
   if (!existsSync(enumDir)) mkdirSync(enumDir, { recursive: true })
@@ -164,13 +153,13 @@ export function generateJavaEntity(ir, outRoot) {
 
   let enumCount = 0
   for (const [name, def] of ir.enums) {
-    writeFileSync(join(enumDir, name + '.java'), renderEnum(name, def), 'utf-8')
+    writeFileSync(join(enumDir, name + '.java'), renderEnum(name, def, PKG_ENUM), 'utf-8')
     enumCount++
   }
 
   let entityCount = 0
   for (const [name, def] of ir.entities) {
-    writeFileSync(join(entityDir, name + '.java'), renderEntity(name, def), 'utf-8')
+    writeFileSync(join(entityDir, name + '.java'), renderEntity(name, def, PKG_ENTITY, PKG_ENUM), 'utf-8')
     entityCount++
   }
 

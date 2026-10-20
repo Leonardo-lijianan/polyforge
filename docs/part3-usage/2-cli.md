@@ -1,17 +1,16 @@
 # 2. 命令行
 
-polyforge 提供四个命令。
+polyforge 提供三个命令。
 
 ```bash
 polyforge check   # 只校验，不生成
 polyforge gen     # 校验 + 生成
-polyforge verify  # 校验生成物 MD5（检测被手改/删除）
 polyforge ir      # 打印 IR（调试用）
 ```
 
 不传命令时，默认 `check`。
 
-所有命令都支持 `--target=frontend|backend|db|all`（默认 `all`），限定只处理某一个目标。`check` 和 `ir` 忽略这个参数（校验和 IR 是全量的）。
+所有命令都支持 `--target=frontend|backend|db|openapi|all`（默认 `all`），限定只处理某一个目标。`check` 和 `ir` 忽略这个参数（校验和 IR 是全量的）。
 
 ## check
 
@@ -64,9 +63,23 @@ polyforge gen                    # 全部目标
 polyforge gen --target=frontend  # 只生成前端
 polyforge gen --target=backend   # 只生成后端
 polyforge gen --target=db        # 只生成迁移
+polyforge gen --target=openapi    # 只生成 OpenAPI 3.0.3 JSON
+
+# 允许破坏性变更（默认阻断）
+polyforge gen --allow-breaking
 ```
 
-只生成某一目标时，**其他目标的文件不会被动**，manifest 也会合并更新（不会丢掉其他目标的条目）。
+只生成某一目标时，**其他目标的文件不会被动**。
+
+### 破坏性变更检测
+
+`gen` 会在生成代码前，对比当前契约与 `.polyforge/schema-snapshot.json`。如果有删字段、改类型、收窄可空性、删接口、改接口签名等破坏性变更，会**中断生成**。
+
+如果确认变更是有意的，加 `--allow-breaking` 参数即可继续并更新快照：
+
+```bash
+polyforge gen --allow-breaking
+```
 
 **流程**：加载 → 结构校验 → 构建 IR → 语义校验 → 生成。
 
@@ -86,41 +99,27 @@ polyforge gen --target=db        # 只生成迁移
 [polyforge] 完成
 ```
 
-## verify
+## 检测「契约变了但忘记重新 gen」
 
-校验生成物 MD5，检测生成的文件有没有被手改或删除。用于 CI 门禁：
+没有 `verify` 子命令。用 `gen` + `git diff` 即可：
 
 ```bash
-polyforge verify                     # 校验全部
-polyforge verify --target=frontend   # 只校验前端
+polyforge gen && git diff --exit-code
 ```
 
-**前提**：先跑过 `polyforge gen`，`.polyforge/manifest.json` 存在。
+契约变了没重新 gen → `gen` 产生新产物 → `git diff` 非空 → 退出码 1。CI 里直接作为门禁用。
 
-`.polyforge/manifest.json` 按 target 分段：
-
-```json
-{
-  "frontend": { "src/core/types/generated/auth.ts": "md5...", ... },
-  "backend": { "src/main/java/.../generated/Auth.java": "md5...", ... },
-  "db": { "src/main/resources/.../V900__generated_tables.sql": "md5..." }
-}
-```
-
-`verify --target=frontend` 只校验 `frontend` 段，不碰其他段。
-
-**退出码**：有文件缺失或被改 → `1`；全部匹配 → `0`。
-
-**典型用途**：
+也可以写成 npm 脚本（`package.json` 里已有 `gen:check`）：
 
 ```json
-// package.json
 {
   "scripts": {
-    "verify:generated": "polyforge gen && polyforge verify"
+    "gen:check": "polyforge gen && git diff --exit-code"
   }
 }
 ```
+
+> 为什么不用内置 `verify` + MD5 清单：`gen` 会清空整个 `generated/` 重建，手改本来就没有持久意义；而「契约变更未同步」用 `git diff` 检测更通用、更直白，不需要 polyforge 专有概念和额外文件。详见 [BASELINES.md](../BASELINES.md)。
 
 ## ir
 

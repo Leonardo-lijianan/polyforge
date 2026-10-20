@@ -185,7 +185,7 @@ spring.jpa.open-in-view=false
 mybatis-plus.configuration.map-underscore-to-camel-case=true
 ```
 
-### 命名冲突（重要）
+### 命名冲突（重要）✅ 已执行
 
 polyforge 现有 `generated/mapper/` 目录是**视图映射器**（Entity → DTO 转换），与 MyBatis 的 **Mapper（DAO）** 概念**撞名**。
 
@@ -197,21 +197,30 @@ generated/
   assembler/    # 视图映射器（Entity → DTO）
 ```
 
-改动点：`generators/java/mapper.mjs` 改名 `assembler.mjs`，产出的类名 `XxxMapper` → `XxxAssembler`。
+改动点（已落地）：
+
+| 旧 | 新 |
+|---|---|
+| `generators/java/repository.mjs` | `generators/java/dao-mapper.mjs`（导出 `generateJavaMapper`） |
+| `generators/java/mapper.mjs` | `generators/java/view-assembler.mjs`（导出 `generateJavaAssembler`） |
+
+产物路径不变，仅源文件名与导出函数名变化。
 
 ### 工作量
 
-| 项 | 估时 |
-|---|---|
-| pom 依赖 | 5 min |
-| `entity.mjs` 重写 | 30 min |
-| `repository.mjs` → `mapper` | 40 min |
-| `mapper.mjs` → `assembler` 改名 | 20 min |
-| `service.mjs` 改注释 | 5 min |
-| 配置改 | 10 min |
-| 生成器测试用例 | 30 min |
-| 集成测试（CRUD 冒烟） | 1 h |
-| **合计** | **约 3.5 h** |
+| 项 | 估时 | 状态 |
+|---|---|---|
+| pom 依赖 | 5 min | ✅ |
+| `entity.mjs` 重写 | 30 min | ✅ |
+| `repository.mjs` → `dao-mapper.mjs` | 40 min | ✅ |
+| `mapper.mjs` → `view-assembler.mjs` 改名 | 20 min | ✅ |
+| `service.mjs` 改注释 | 5 min | ✅ |
+| 配置改 | 10 min | ✅ |
+| `basePackage` 生效（迁移时遗漏，后补） | 60 min | ✅ |
+| `MetaObjectHandler` 骨架生成（迁移时遗漏，后补） | 30 min | ✅ |
+| 生成器 golden-file 烟测（`tests/gen-smoke.mjs`） | 30 min | ✅ |
+| 集成测试（CRUD 冒烟） | 1 h | ⏳ 待试水 |
+| **合计** | **约 4 h** | |
 
 > 前提：手写 ServiceImpl 目前全是骨架（`throw TODO`），无业务逻辑需迁移；无其他手写代码引用生成物。
 
