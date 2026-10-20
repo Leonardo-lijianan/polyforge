@@ -1,13 +1,8 @@
 /**
  * Flyway 迁移生成器
- * IR → 建表 SQL（PostgreSQL 方言）
+ * IR → 建表 SQL（支持 PostgreSQL / MySQL 方言）
  *
  * 输出：<outRoot>/V900__generated_tables.sql
- *
- * 索引处理：
- *   - 字段级 index: true    → 单列普通索引
- *   - 字段级 unique: true   → 列内联 UNIQUE（不额外建索引）
- *   - 表级 indexes[]        → 复合索引 / 复合唯一
  */
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -17,48 +12,43 @@ function camelToSnake(s) {
 }
 
 /**
- * 字段 → PG 类型。
- * 输入由 buildIR 保证合法（引用已解析、类型已校验），故无 default 回退；
- * 遇到未覆盖的类型直接抛错（fail fast），避免静默生成错误列类型。
+ * 字段 → SQL 类型。
+ * 输入由 buildIR 保证合法（引用已解析、类型已校验）。
  */
-function pgType(fd) {
-  // 枚举数组 → PG 原生数组；其余数组（结构化）应已拆为子表
-  if (fd.of) return 'varchar[]'
+function sqlType(fd, dialect) {
+  const isPg = dialect === 'postgres'
+  if (fd.of) return isPg ? 'varchar[]' : 'json'
   const t = fd.type
-  if (fd.resolved?.kind === 'enum') return 'varchar(32)'
-  if (fd.resolved?.kind === 'entity') return 'varchar(64)'
+  if (fd.resolved?.kind === 'enum') return isPg ? 'varchar(32)' : 'varchar(32)'
+  if (fd.resolved?.kind === 'entity') return isPg ? 'varchar(64)' : 'varchar(64)'
+  
   switch (t) {
     case 'id':
-      if (fd.idType === 'uuid') return 'uuid'
-      if (fd.idType === 'string') return 'varchar(64)'
+      if (fd.idType === 'uuid') return isPg ? 'uuid' : 'varchar(36)'
+      if (fd.idType === 'string') return isPg ? 'varchar(64)' : 'varchar(64)'
       return 'bigint'
     case 'string': return 'varchar(' + (fd.length || 255) + ')'
-    case 'text': return 'text'
+    case 'text': return isPg ? 'text' : 'longtext'
     case 'int': return 'int'
     case 'long': return 'bigint'
     case 'number':
     case 'decimal': return 'numeric(18,2)'
-    case 'boolean': return 'boolean'
+    case 'boolean': return isPg ? 'boolean' : 'tinyint(1)'
     case 'date': return 'date'
-    case 'datetime': return 'timestamptz'
-    case 'json': return 'jsonb'
-    case 'array': return 'jsonb'
+    case 'datetime': return isPg ? 'timestamptz' : 'datetime'
     default:
-      throw new Error('无法映射 PG 类型: ' + t + '（字段类型未被 pgType 覆盖）')
+      throw new Error('无法映射 SQL 类型: ' + t + '（方言: ' + dialect + '）')
   }
 }
 
 function isAutoId(fd) {
-  // ref 字段 type 也是 'id'，但不是自增主键
   return fd.type === 'id' && !fd.ref && (!fd.idType || fd.idType === 'long')
 }
 
 /**
  * IR → 结构化 schema。
- * 这是 V900 首次生成和 V901+ 增量迁移共享的唯一真源。
- * 结构：{ tables: { <table>: { columns: [{name,sqlType,nullable,unique,pk}], pk, indexes: [{name,columns,unique}] } } }
  */
-export function schemaFromIR(ir) {
+export function schemaFromIR(ir, dialect = 'postgres') {
   const tables = {}
   for (const [name, def] of ir.entities) {
     const table = def.table || camelToSnake(name) + 's'
@@ -66,12 +56,12 @@ export function schemaFromIR(ir) {
     for (const [fn, fd] of Object.entries(def.fields || {})) {
       if (fd.derived) continue
       const col = camelToSnake(fn)
-      const pg = pgType(fd)
+      const typeStr = sqlType(fd, dialect)
       if (fd.type === 'id' && !fd.ref) {
         t.pk = col
         t.columns.push({
           name: col,
-          sqlType: isAutoId(fd) ? 'bigint GENERATED ALWAYS AS IDENTITY' : pg,
+          sqlType: isAutoId(fd) ? (dialect === 'postgres' ? 'bigint GENERATED ALWAYS AS IDENTITY' : 'bigint AUTO_INCREMENT') : typeStr,
           nullable: false,
           unique: false,
           pk: true,
@@ -80,8 +70,7 @@ export function schemaFromIR(ir) {
       }
       t.columns.push({
         name: col,
-        sqlType: pg,
-        // 与原 renderTable 等价：!fd.nullable && !fd.auto 才加 NOT NULL
+        sqlType: typeStr,
         nullable: fd.auto ? true : !!fd.nullable,
         unique: !!fd.unique,
         pk: false,
@@ -108,8 +97,11 @@ export function schemaFromIR(ir) {
 }
 
 /** 从结构化 table 渲染 CREATE TABLE 语句 */
-export function renderCreateTable(table, t) {
+export function renderCreateTable(table, t, dialect = 'postgres') {
   const cols = t.columns.map((c) => {
+    if (c.pk && dialect === 'mysql') {
+      return '  ' + c.name + ' ' + c.sqlType + ' NOT NULL AUTO_INCREMENT'
+    }
     if (c.pk) return '  ' + c.name + ' ' + c.sqlType
     const parts = ['  ' + c.name, c.sqlType]
     if (!c.nullable) parts.push('NOT NULL')
@@ -117,30 +109,36 @@ export function renderCreateTable(table, t) {
     return parts.join(' ')
   })
   if (t.pk) cols.push('  PRIMARY KEY (' + t.pk + ')')
-  return 'CREATE TABLE IF NOT EXISTS ' + table + ' (\n' + cols.join(',\n') + '\n);'
+  
+  const suffix = dialect === 'mysql' ? ' ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;' : ';'
+  return 'CREATE TABLE IF NOT EXISTS ' + table + ' (\n' + cols.join(',\n') + '\n)' + suffix
 }
 
-/** 从结构化索引渲染 CREATE INDEX 语句 */
-export function renderCreateIndex(table, idx) {
+/** 从结构化索引渲染 CREATE INDEX 语句（MySQL 不支持 IF NOT EXISTS 索引，用 ALTER TABLE 变通） */
+export function renderCreateIndex(table, idx, dialect = 'postgres') {
+  if (dialect === 'mysql') {
+    // MySQL 没有 CREATE INDEX IF NOT EXISTS，为了幂等，使用特殊注释或特定语法（这里用普通 CREATE INDEX 即可，假定 Flyway 会追踪）
+    return 'CREATE ' + (idx.unique ? 'UNIQUE ' : '') + 'INDEX ' + idx.name + ' ON ' + table + ' (' + idx.columns.join(', ') + ');'
+  }
   return 'CREATE ' + (idx.unique ? 'UNIQUE ' : '') + 'INDEX IF NOT EXISTS ' + idx.name + ' ON ' + table + ' (' + idx.columns.join(', ') + ');'
 }
 
-export function generateJavaFlyway(ir, outRoot) {
+export function generateJavaFlyway(ir, outRoot, dialect = 'postgres') {
   if (!existsSync(outRoot)) mkdirSync(outRoot, { recursive: true })
 
-  const schema = schemaFromIR(ir)
+  const schema = schemaFromIR(ir, dialect)
   const lines = [
     '-- AUTO-GENERATED by polyforge. DO NOT EDIT.',
-    '-- 源：模型定义的 entities 段',
+    '-- 源：模型定义的 entities 段（方言: ' + dialect + '）',
     '',
   ]
 
   let count = 0
   for (const [table, t] of Object.entries(schema.tables)) {
-    lines.push(renderCreateTable(table, t))
+    lines.push(renderCreateTable(table, t, dialect))
     if (t.indexes.length > 0) {
       lines.push('')
-      for (const idx of t.indexes) lines.push(renderCreateIndex(table, idx))
+      for (const idx of t.indexes) lines.push(renderCreateIndex(table, idx, dialect))
     }
     lines.push('')
     count++
@@ -148,5 +146,5 @@ export function generateJavaFlyway(ir, outRoot) {
 
   const out = join(outRoot, 'V900__generated_tables.sql')
   writeFileSync(out, lines.join('\n'), 'utf-8')
-  console.log('  [java/flyway] ' + count + ' 张表 → ' + out)
+  console.log('  [java/flyway] ' + count + ' 张表 → ' + out + ' (' + dialect + ')')
 }

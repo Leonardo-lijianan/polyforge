@@ -140,6 +140,7 @@ source:
 | 键 | 含义 |
 |---|---|
 | `flyway` | 建表 SQL 的输出目录。polyforge 会写一个 `V900__generated_tables.sql` |
+| `dialect` | 数据库方言，可选 `postgres`（默认）或 `mysql` |
 
 ### outputs.openapi
 

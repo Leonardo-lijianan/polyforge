@@ -20,13 +20,8 @@ const HEADER = [
 // 包名由 generateJavaEntity 的 basePackage 参数派生（见文件末尾）
 
 // 注：entity 不再有 json（C26 禁）或 array（拆子表）字段
-const PRIM = {
-  string: 'String', text: 'String',
-  int: 'Integer', long: 'Long',
-  number: 'BigDecimal', decimal: 'BigDecimal',
-  boolean: 'Boolean',
-  date: 'LocalDate', datetime: 'OffsetDateTime',
-}
+// date 统一用 LocalDate；datetime 由调用方传入 dateTimeType
+let DATE_TIME_TYPE = 'OffsetDateTime'
 
 function camelToSnake(s) {
   return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
@@ -34,13 +29,20 @@ function camelToSnake(s) {
 
 function javaType(fd) {
   if (fd.of) {
-    if (PRIM[fd.of]) return 'List<' + PRIM[fd.of] + '>'
+    const ofMap = { string: 'String', text: 'String', int: 'Integer', long: 'Long', number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean', date: 'LocalDate', datetime: DATE_TIME_TYPE }
+    if (ofMap[fd.of]) return 'List<' + ofMap[fd.of] + '>'
     if (fd.of === 'id') return 'List<Long>'
     return 'List<' + javaTypeByRef(fd.of, fd.resolvedOf) + '>'
   }
   const t = fd.type
   if (t === 'id') return fd.idType === 'long' || !fd.idType ? 'Long' : 'String'
-  if (PRIM[t]) return PRIM[t]
+  if (t === 'date') return 'LocalDate'
+  if (t === 'datetime') return DATE_TIME_TYPE
+  const map = {
+    string: 'String', text: 'String', int: 'Integer', long: 'Long',
+    number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean',
+  }
+  if (map[t]) return map[t]
   return javaTypeByRef(t, fd.resolved)
 }
 
@@ -105,7 +107,8 @@ function renderEntity(name, def, PKG_ENTITY, PKG_ENUM) {
   lines.push('')
   lines.push('import com.baomidou.mybatisplus.annotation.*;')
   lines.push('import lombok.Data;')
-  lines.push('import java.time.OffsetDateTime;')
+  if (DATE_TIME_TYPE === 'OffsetDateTime') lines.push('import java.time.OffsetDateTime;')
+  else lines.push('import java.time.LocalDateTime;')
   lines.push('import java.time.LocalDate;')
   lines.push('import java.math.BigDecimal;')
   if (usesList) lines.push('import java.util.List;')
@@ -143,7 +146,8 @@ function renderEntity(name, def, PKG_ENTITY, PKG_ENUM) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaEntity(ir, outRoot, basePackage) {
+export function generateJavaEntity(ir, outRoot, basePackage, dateTimeType = 'OffsetDateTime') {
+  DATE_TIME_TYPE = dateTimeType
   const PKG_ENUM = basePackage + '.generated.enums'
   const PKG_ENTITY = basePackage + '.generated.entity'
   const enumDir = join(outRoot, 'enums')

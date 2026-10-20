@@ -73,6 +73,10 @@ const CONFIG = [
   '    basePackage: ' + BASE_PACKAGE,
   '    generatedDir: generated',
   '    handServiceDir: hand',
+  "    dateTimeType: LocalDateTime",
+  '  db:',
+  '    flyway: db/migration',
+  "    dialect: mysql",
   '',
 ].join('\n')
 
@@ -85,7 +89,7 @@ try {
   writeFileSync(join(modelDir, 'dish.yaml'), MODEL, 'utf-8')
   writeFileSync(join(tmp, 'polyforge.config.yaml'), CONFIG, 'utf-8')
 
-  const res = spawnSync('node', [CLI, 'gen', '--target=backend'], {
+  const res = spawnSync('node', [CLI, 'gen'], {
     cwd: tmp,
     env: { ...process.env, POLYFORGE_SOURCE: modelDir },
     encoding: 'utf-8',
@@ -115,6 +119,17 @@ try {
     check(s.includes('@TableId(type = IdType.AUTO)'), 'entity 含 @TableId')
     check(!s.includes('@Entity'), 'entity 不含 JPA @Entity')
     check(!s.includes('javax.persistence'), 'entity 不含 javax.persistence')
+    check(s.includes('import java.time.LocalDateTime;'), 'entity 时间类型应为 LocalDateTime')
+    check(!s.includes('import java.time.OffsetDateTime;'), 'entity 不应含 OffsetDateTime')
+  }
+
+  const dbFile = join(tmp, 'db', 'migration', 'V900__generated_tables.sql')
+  if (existsSync(dbFile)) {
+    const s = readFileSync(dbFile, 'utf-8')
+    check(s.includes('AUTO_INCREMENT'), 'DDL 应该包含 MySQL 的 AUTO_INCREMENT')
+    check(s.includes('ENGINE=InnoDB'), 'DDL 应该包含 MySQL 的 ENGINE=InnoDB')
+    check(!s.includes('GENERATED ALWAYS AS IDENTITY'), 'DDL 不应含 PostgreSQL 的 IDENTITY')
+    check(!s.includes('timestamptz'), 'DDL 不应含 PostgreSQL 的 timestamptz')
   }
 
   if (existsSync(mapperFile)) {

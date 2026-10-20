@@ -15,13 +15,13 @@ const HEADER = [
 
 // 包名由 generateJavaDto 的 basePackage 参数派生（见文件末尾）
 
+let DATE_TIME_TYPE = 'OffsetDateTime'
 const PRIM = {
   id: 'String', string: 'String', text: 'String',
   int: 'Integer', long: 'Long',
   number: 'BigDecimal', decimal: 'BigDecimal',
   boolean: 'Boolean',
-  date: 'LocalDate', datetime: 'OffsetDateTime',
-  json: 'Object', array: 'List<Object>',
+  date: 'LocalDate',
 }
 
 function javaType(fd) {
@@ -31,6 +31,7 @@ function javaType(fd) {
     return 'List<' + javaTypeByRef(fd.of, fd.resolvedOf) + '>'
   }
   const t = fd.type
+  if (t === 'datetime') return DATE_TIME_TYPE
   if (PRIM[t]) return PRIM[t]
   return javaTypeByRef(t, fd.resolved)
 }
@@ -62,7 +63,7 @@ function renderDto(name, def, PKG, PKG_ENUM) {
     if (t === 'BigDecimal') needsBigDecimal = true
     if (t.startsWith('List<')) needsList = true
     if (t === 'LocalDate') needsDate = true
-    if (t === 'OffsetDateTime') needsDateTime = true
+    if (t === 'OffsetDateTime' || t === 'LocalDateTime') needsDateTime = true
     if (fd.resolved?.kind === 'enum') usedEnums.add(fd.resolved.target)
     if (fd.resolved?.kind === 'view') usedViews.add(fd.resolved.target)
     if (fd.resolvedOf?.kind === 'enum') usedEnums.add(fd.resolvedOf.target)
@@ -71,7 +72,8 @@ function renderDto(name, def, PKG, PKG_ENUM) {
     params.push('        ' + t + ' ' + fn)
   }
 
-  lines.push('import java.time.OffsetDateTime;')
+  if (DATE_TIME_TYPE === 'OffsetDateTime') lines.push('import java.time.OffsetDateTime;')
+  else lines.push('import java.time.LocalDateTime;')
   lines.push('import java.time.LocalDate;')
   lines.push('import java.math.BigDecimal;')
   lines.push('import java.util.List;')
@@ -91,7 +93,8 @@ function renderDto(name, def, PKG, PKG_ENUM) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaDto(ir, outRoot, basePackage) {
+export function generateJavaDto(ir, outRoot, basePackage, dateTimeType = 'OffsetDateTime') {
+  DATE_TIME_TYPE = dateTimeType
   const PKG = basePackage + '.generated.dto'
   const PKG_ENUM = basePackage + '.generated.enums'
   const dir = join(outRoot, 'dto')

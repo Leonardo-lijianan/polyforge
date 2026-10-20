@@ -16,17 +16,17 @@ import { join, dirname } from 'path'
 import { schemaFromIR, renderCreateTable, renderCreateIndex } from './flyway.mjs'
 
 /** 写 schema state（首次生成 V900 后调用，或每次生成 alter 后内部调用） */
-export function writeDbSchemaState(ir, statePath) {
+export function writeDbSchemaState(ir, statePath, dialect = 'postgres') {
   const dir = dirname(statePath)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
-  writeFileSync(statePath, JSON.stringify(schemaFromIR(ir), null, 2), 'utf-8')
+  writeFileSync(statePath, JSON.stringify(schemaFromIR(ir, dialect), null, 2), 'utf-8')
 }
 
 /**
  * 对比两份 schema，返回变更列表。
  * 每条：{ kind, table, column?, index?, breaking, sql }
  */
-export function diffSchema(oldSchema, newSchema) {
+export function diffSchema(oldSchema, newSchema, dialect = 'postgres') {
   const changes = []
   const oldTables = oldSchema.tables || {}
   const newTables = newSchema.tables || {}
@@ -34,9 +34,9 @@ export function diffSchema(oldSchema, newSchema) {
   // 新增表：整表 CREATE + 索引
   for (const [table, t] of Object.entries(newTables)) {
     if (!oldTables[table]) {
-      changes.push({ kind: 'table-added', table, breaking: false, sql: renderCreateTable(table, t) })
+      changes.push({ kind: 'table-added', table, breaking: false, sql: renderCreateTable(table, t, dialect) })
       for (const idx of t.indexes || []) {
-        changes.push({ kind: 'index-added', table, index: idx.name, breaking: false, sql: renderCreateIndex(table, idx) })
+        changes.push({ kind: 'index-added', table, index: idx.name, breaking: false, sql: renderCreateIndex(table, idx, dialect) })
       }
     }
   }
@@ -93,30 +93,39 @@ export function diffSchema(oldSchema, newSchema) {
       const oldC = oldCols[col]
       if (!oldC) continue
       if (oldC.sqlType !== newC.sqlType) {
+        const sql = dialect === 'mysql'
+          ? 'ALTER TABLE ' + table + ' MODIFY COLUMN ' + col + ' ' + newC.sqlType + (newC.nullable ? ' NULL' : ' NOT NULL') + ';'
+          : 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' TYPE ' + newC.sqlType + ';'
         changes.push({
           kind: 'column-type-changed',
           table,
           column: col,
           breaking: true,
-          sql: 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' TYPE ' + newC.sqlType + ';',
+          sql,
         })
       }
       if (oldC.nullable && !newC.nullable) {
+        const sql = dialect === 'mysql'
+          ? 'ALTER TABLE ' + table + ' MODIFY COLUMN ' + col + ' ' + newC.sqlType + ' NOT NULL;'
+          : 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' SET NOT NULL;'
         changes.push({
           kind: 'column-set-not-null',
           table,
           column: col,
           breaking: true,
-          sql: 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' SET NOT NULL;',
+          sql,
         })
       }
-      if (!oldC.nullable && newC.nullable) {
+        if (!oldC.nullable && newC.nullable) {
+        const sql = dialect === 'mysql'
+          ? 'ALTER TABLE ' + table + ' MODIFY COLUMN ' + col + ' ' + newC.sqlType + ' NULL;'
+          : 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' DROP NOT NULL;'
         changes.push({
           kind: 'column-drop-not-null',
           table,
           column: col,
           breaking: false,
-          sql: 'ALTER TABLE ' + table + ' ALTER COLUMN ' + col + ' DROP NOT NULL;',
+          sql,
         })
       }
     }
@@ -130,17 +139,20 @@ export function diffSchema(oldSchema, newSchema) {
         index: name,
         // UNIQUE 索引对老数据可能失败，保守视为破坏性
         breaking: !!idx.unique,
-        sql: renderCreateIndex(table, idx),
+        sql: renderCreateIndex(table, idx, dialect),
       })
     }
     for (const [name] of Object.entries(oldIdx)) {
       if (newIdx[name]) continue
+      const dropSql = dialect === 'mysql'
+        ? 'DROP INDEX ' + name + ' ON ' + table + ';'
+        : 'DROP INDEX IF EXISTS ' + name + ';'
       changes.push({
         kind: 'index-removed',
         table,
         index: name,
         breaking: false,
-        sql: 'DROP INDEX IF EXISTS ' + name + ';',
+        sql: dropSql,
       })
     }
   }
@@ -163,13 +175,13 @@ function nextVersion(outRoot) {
  * 对比 state 与当前 IR，生成增量迁移文件。
  * @returns {{ changes: Array, outFile: string|null, blocked: boolean, breaking?: Array }}
  */
-export function generateAlterSql(ir, outRoot, statePath, { allowBreaking = false } = {}) {
+export function generateAlterSql(ir, outRoot, statePath, { allowBreaking = false, dialect = 'postgres' } = {}) {
   if (!existsSync(statePath)) {
     throw new Error('generateAlterSql 需要先有 schema state: ' + statePath + '（应先跑一次 V900 生成）')
   }
   const oldSchema = JSON.parse(readFileSync(statePath, 'utf-8'))
-  const newSchema = schemaFromIR(ir)
-  const changes = diffSchema(oldSchema, newSchema)
+  const newSchema = schemaFromIR(ir, dialect)
+  const changes = diffSchema(oldSchema, newSchema, dialect)
   if (changes.length === 0) return { changes: [], outFile: null, blocked: false }
 
   const breaking = changes.filter((c) => c.breaking)

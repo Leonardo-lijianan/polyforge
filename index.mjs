@@ -14,8 +14,9 @@
 import { loadConfig } from './config.mjs'
 import { resolveSourceDir } from './source.mjs'
 import { extractSnapshot, diffSnapshots, readSnapshot, writeSnapshot } from './snapshot.mjs'
-import { existsSync, rmSync } from 'fs'
+import { existsSync, rmSync, realpathSync } from 'fs'
 import { join } from 'path'
+import { fileURLToPath } from 'url'
 import { loadAll } from './parser/load.mjs'
 import { validateSchema } from './parser/schema-validator.mjs'
 import { buildIR } from './parser/build-ir.mjs'
@@ -23,15 +24,9 @@ import { validate } from './validate/index.mjs'
 import { generateFrontendTypes } from './generators/frontend/types.mjs'
 import { generateFrontendRequestMap } from './generators/frontend/requestMap.mjs'
 import { generateFrontendValidators } from './generators/frontend/validators.mjs'
-import { generateJavaEntity } from './generators/java/entity.mjs'
-import { generateJavaDto } from './generators/java/dto.mjs'
+import { runBackendGenerators } from './generators/registry.mjs'
 import { generateJavaFlyway } from './generators/java/flyway.mjs'
 import { writeDbSchemaState, generateAlterSql } from './generators/java/alter.mjs'
-import { generateJavaMapper } from './generators/java/dao-mapper.mjs'
-import { generateJavaAssembler } from './generators/java/view-assembler.mjs'
-import { generateJavaService } from './generators/java/service.mjs'
-import { generateJavaController } from './generators/java/controller.mjs'
-import { generateJavaMetaObjectHandler } from './generators/java/handler.mjs'
 import { generateOpenApi } from './generators/openapi/index.mjs'
 
 function printDiagnostics(result) {
@@ -183,13 +178,7 @@ async function main() {
     if (wantBackend && be) {
       console.log('')
       console.log('[polyforge] 生成后端...')
-      generateJavaEntity(ir, be.generatedDir, be.basePackage)
-      generateJavaDto(ir, be.generatedDir, be.basePackage)
-      generateJavaMapper(ir, be.generatedDir, be.basePackage)
-      generateJavaAssembler(ir, be.generatedDir, be.basePackage)
-      generateJavaService(ir, be.generatedDir, be.handServiceDir, be.basePackage)
-      generateJavaController(ir, be.generatedDir, be.basePackage)
-      generateJavaMetaObjectHandler(ir, be.handServiceDir, be.basePackage)
+      runBackendGenerators(ir, be)
     }
     if (wantDb && db?.flyway) {
       console.log('')
@@ -198,12 +187,13 @@ async function main() {
       //   state 不存在 → 首次，生成 V900 基线 + 写 state
       //   state 存在   → 对比 state 与当前 IR，有变更则生成 V901+__alter_generated.sql，不动 V900
       const statePath = join(config.projectRoot, '.polyforge', 'db-schema-state.json')
+      const dialect = db.dialect || 'postgres'
       if (!existsSync(statePath)) {
-        generateJavaFlyway(ir, db.flyway)
-        writeDbSchemaState(ir, statePath)
+        generateJavaFlyway(ir, db.flyway, dialect)
+        writeDbSchemaState(ir, statePath, dialect)
         console.log('[polyforge] DB schema state 已初始化 -> .polyforge/db-schema-state.json')
       } else {
-        const res = generateAlterSql(ir, db.flyway, statePath, { allowBreaking })
+        const res = generateAlterSql(ir, db.flyway, statePath, { allowBreaking, dialect })
         if (res.blocked) {
           console.error('')
           console.error('[polyforge] DB 增量迁移检测到 ' + res.breaking.length + ' 处破坏性变更：')
@@ -238,7 +228,22 @@ async function main() {
 
 }
 
-main().catch((err) => {
-  console.error('[polyforge] 异常:', err)
-  process.exit(1)
-})
+// 只有当被当作可执行脚本直接运行（而不是被其他模块 import）时，才触发 main。
+// 兼容 npm 全局 bin 软链接：通过 realpathSync 还原真实路径再比对。
+function isRunningAsCli() {
+  if (!process.argv[1]) return false
+  try {
+    const currentFile = fileURLToPath(import.meta.url)
+    const argvFile = realpathSync(process.argv[1])
+    return currentFile === argvFile || currentFile === process.argv[1]
+  } catch {
+    return false
+  }
+}
+
+if (isRunningAsCli()) {
+  main().catch((err) => {
+    console.error('[polyforge] 异常:', err)
+    process.exit(1)
+  })
+}

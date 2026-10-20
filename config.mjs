@@ -162,6 +162,7 @@ export async function loadConfig(cwd = process.cwd()) {
             handServiceDir: userConfig.outputs.backend.handServiceDir
               ? resolve(cwd, userConfig.outputs.backend.handServiceDir)
               : null,
+            dateTimeType: userConfig.outputs.backend.dateTimeType || 'OffsetDateTime',
           }
         : null,
       db: userConfig.outputs?.db
@@ -169,6 +170,7 @@ export async function loadConfig(cwd = process.cwd()) {
             flyway: userConfig.outputs.db.flyway
               ? resolve(cwd, userConfig.outputs.db.flyway)
               : null,
+            dialect: userConfig.outputs.db.dialect || 'postgres',
           }
         : null,
       openapi: (() => {

@@ -25,6 +25,8 @@ const HEADER = [
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function lower(s) { return s.charAt(0).toLowerCase() + s.slice(1) }
 
+let DATE_TIME_TYPE = 'OffsetDateTime'
+
 /** 实体字段 → Java 类型名（用于判断转换） */
 function entityFieldJavaType(fd) {
   if (!fd) return 'String'
@@ -32,7 +34,7 @@ function entityFieldJavaType(fd) {
   const map = {
     string: 'String', text: 'String', int: 'Integer', long: 'Long',
     number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean',
-    date: 'LocalDate', datetime: 'OffsetDateTime', json: 'String',
+    date: 'LocalDate', datetime: DATE_TIME_TYPE,
   }
   if (fd.resolved?.kind === 'enum' || fd.resolved?.kind === 'entity') return fd.resolved.target
   return map[fd.type] || 'String'
@@ -48,7 +50,7 @@ function viewFieldJavaType(fd) {
   const map = {
     string: 'String', text: 'String', int: 'Integer', long: 'Long',
     number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean',
-    date: 'LocalDate', datetime: 'OffsetDateTime', json: 'Object',
+    date: 'LocalDate', datetime: DATE_TIME_TYPE,
   }
   if (fd.resolved?.kind === 'enum' || fd.resolved?.kind === 'view') return fd.resolved.target
   return map[fd.type] || 'String'
@@ -123,7 +125,8 @@ function renderAssembler(viewName, view, ir, PKG, PKG_DTO, PKG_ENTITY) {
   return lines.join('\n') + '\n'
 }
 
-export function generateJavaAssembler(ir, outRoot, basePackage) {
+export function generateJavaAssembler(ir, outRoot, basePackage, dateTimeType = 'OffsetDateTime') {
+  DATE_TIME_TYPE = dateTimeType
   const PKG = basePackage + '.generated.assembler'
   const PKG_DTO = basePackage + '.generated.dto'
   const PKG_ENTITY = basePackage + '.generated.entity'

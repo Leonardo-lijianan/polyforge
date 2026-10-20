@@ -13,7 +13,8 @@
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
 
-function renderHandler(basePackage) {
+function renderHandler(basePackage, dateTimeType) {
+  const importStmt = dateTimeType === 'OffsetDateTime' ? 'import java.time.OffsetDateTime;' : 'import java.time.LocalDateTime;'
   return [
     '// 手写实现：纯骨架会被 polyforge 刷新；填入逻辑后即受保护。',
     '// 源：MetaObjectHandler 骨架（配合实体上的 @TableField(fill=...) 使用）',
@@ -22,7 +23,7 @@ function renderHandler(basePackage) {
     'import com.baomidou.mybatisplus.core.handlers.MetaObjectHandler;',
     'import org.apache.ibatis.reflection.MetaObject;',
     'import org.springframework.stereotype.Component;',
-    'import java.time.OffsetDateTime;',
+    importStmt,
     '',
     '/**',
     ' * MyBatis-Plus 公共字段自动填充。',
@@ -36,14 +37,14 @@ function renderHandler(basePackage) {
     '',
     '    @Override',
     '    public void insertFill(MetaObject metaObject) {',
-    '        this.strictInsertFill(metaObject, "createTime", OffsetDateTime.class, OffsetDateTime.now());',
-    '        this.strictInsertFill(metaObject, "updateTime", OffsetDateTime.class, OffsetDateTime.now());',
+    '        this.strictInsertFill(metaObject, "createTime", ' + dateTimeType + '.class, ' + dateTimeType + '.now());',
+    '        this.strictInsertFill(metaObject, "updateTime", ' + dateTimeType + '.class, ' + dateTimeType + '.now());',
     '        // TODO: 填充 createUser / updateUser（需接入项目认证上下文）',
     '    }',
     '',
     '    @Override',
     '    public void updateFill(MetaObject metaObject) {',
-    '        this.strictUpdateFill(metaObject, "updateTime", OffsetDateTime.class, OffsetDateTime.now());',
+    '        this.strictUpdateFill(metaObject, "updateTime", ' + dateTimeType + '.class, ' + dateTimeType + '.now());',
     '        // TODO: 填充 updateUser',
     '    }',
     '}',
@@ -51,7 +52,7 @@ function renderHandler(basePackage) {
   ].join('\n')
 }
 
-export function generateJavaMetaObjectHandler(ir, handRoot, basePackage) {
+export function generateJavaMetaObjectHandler(ir, handRoot, basePackage, dateTimeType = 'OffsetDateTime') {
   const dir = join(handRoot, 'config')
   const file = join(dir, 'GeneratedMetaObjectHandler.java')
   if (existsSync(file)) {
@@ -59,6 +60,6 @@ export function generateJavaMetaObjectHandler(ir, handRoot, basePackage) {
     return
   }
   mkdirSync(dir, { recursive: true })
-  writeFileSync(file, renderHandler(basePackage), 'utf-8')
+  writeFileSync(file, renderHandler(basePackage, dateTimeType), 'utf-8')
   console.log('  [java/handler] MetaObjectHandler 骨架 → ' + file)
 }
