@@ -34,6 +34,8 @@ const EXPECT = {
   'ref-weak-edge.yaml': [],
   'ref-bad-target.yaml': ['引用不存在'],
   'alter-basic.yaml': [],
+  'c33-input-not-form.yaml': ['C33'],
+  'c33-input-form-ok.yaml': [],
 }
 
 /** 期望输出里「不应出现」的子串 */

@@ -1,0 +1,21 @@
+# C33 违规：api.input 引用了 detail 视图（出参方向）
+kind: domain
+domain: c33bad
+
+views:
+  OrderForm:
+    kind: form
+    fields:
+      amount: { type: decimal }
+  OrderDetail:
+    kind: detail
+    fields:
+      id: { type: id }
+      amount: { type: decimal }
+
+api:
+  confirmOrder:
+    method: PUT
+    path: /orders/confirm
+    input: OrderDetail
+    output: OrderDetail

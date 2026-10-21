@@ -247,6 +247,18 @@ export function validate(ir) {
     checkScope('pathParams', '接口', api.name + '.pathParams', api.pathParams)
   }
 
+  // ============ C33：api.input 必须引用 form 视图 ============
+  // 入参方向只能是 form；用 detail/brief 当 input 会生成语义错误的 Controller
+  // （拿出参 DTO 当 @RequestBody）。这是 sky-trial 实测暴露的校验缺口（P1-7）。
+  for (const api of ir.apis) {
+    if (!api.input) continue
+    const target = ir.views.get(api.input)
+    if (!target) continue // 引用不存在由 C1 报
+    if (target.viewKind !== 'form') {
+      errors.push('C33 input 必须是 form 视图: api ' + api.name + '.input = ' + api.input + '（kind: ' + target.viewKind + '）')
+    }
+  }
+
   // ============ C32：derived 字段语义 ============
   const DERIVED_KINDS = new Set(['text', 'join', 'relation', 'permission', 'compute'])
   for (const [name, v] of ir.views) {

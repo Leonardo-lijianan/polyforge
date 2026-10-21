@@ -35,6 +35,7 @@ export const RULES = {
   C30: { level: 'error',   summary: '字段名暗示日期的必须用 date/datetime', scope: '类型', impl: 'validate' },
   C31: { level: 'error',   summary: '修饰符必须用在允许的位置', scope: '位置', impl: 'validate' },
   C32: { level: 'error',   summary: 'derived 字段的语义约束', scope: '行为', impl: 'validate' },
+  C33: { level: 'error',   summary: 'api.input 必须引用 form 视图', scope: '接口', impl: 'validate' },
 }
 export function rule(id) { return RULES[id] || null }
 export function implementedIds() { return Object.keys(RULES).filter((k) => RULES[k]) }

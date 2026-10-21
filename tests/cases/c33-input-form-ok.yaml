@@ -1,0 +1,21 @@
+# C33 对照：api.input 引用 form 视图，合法
+kind: domain
+domain: c33ok
+
+views:
+  OrderForm:
+    kind: form
+    fields:
+      amount: { type: decimal }
+  OrderDetail:
+    kind: detail
+    fields:
+      id: { type: id }
+      amount: { type: decimal }
+
+api:
+  createOrder:
+    method: POST
+    path: /orders
+    input: OrderForm
+    output: OrderDetail
