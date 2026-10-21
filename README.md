@@ -55,7 +55,18 @@ polyforge gen --allow-breaking
 
 # 打印 IR（调试）
 polyforge ir
+
+# 浏览文档
+polyforge docs
+polyforge docs modifier-scope
+
+# DSL 语法速查（不需要配置，任何目录都能跑）
+polyforge syntax
+polyforge syntax sensitive
 ```
+
+`--help` / `--version` / `docs` / `syntax` 都在加载配置之前返回，
+配置还没写、报错看不懂时，先用它们。
 
 ## 破坏性变更检测
 

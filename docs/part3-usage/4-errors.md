@@ -50,7 +50,7 @@ schema 阶段用 JSON Schema 校验文档结构。典型：
 
 ## 校验错误（C 编号）
 
-语义校验的每条规则有编号（C1 ~ C32），输出形如：
+语义校验的每条规则有编号（C1 ~ C33），输出形如：
 
 ```
 [error] C18 缺少主键: 实体 User 没有 type:id 字段
@@ -59,6 +59,39 @@ schema 阶段用 JSON Schema 校验文档结构。典型：
 ```
 
 **读法**：`C编号` + 说明。C 编号的含义见[校验规则](../part4-design/3-validation.md)。
+
+## 修法提示
+
+结构错误和校验错误都会附带**修法**和**文档入口**。默认两行：
+
+```
+  [error] /domains/order.yaml  views.OrderDetail.fields.phone.sensitive 类型错误（应为 string）
+          修法：sensitive 只接受 mask / hide（字符串），且仅 brief / detail 视图可用  |  polyforge syntax sensitive
+```
+
+加 `--verbose` 展开完整示例：
+
+```
+  [error] /domains/order.yaml  views.OrderDetail.fields.phone.sensitive 类型错误（应为 string）
+
+          正确写法（sensitive）：
+            views:
+              OrderDetail:
+                kind: detail
+                fields:
+                  phone:
+                    type: string
+                    from: Order.phone
+                    sensitive: mask
+
+          说明：mask 返回时打码；hide 返回时省略
+
+          修法：sensitive 只接受 mask / hide（字符串），且仅 brief / detail 视图可用
+          速查：polyforge syntax sensitive
+          文档：polyforge docs modifier-scope
+```
+
+修法数据源：`validate/error-hints.mjs`。关键字速查数据源：`cli/syntax-index.mjs`。
 
 ## 警告
 
@@ -92,6 +125,7 @@ polyforge check || exit 1
 | `C1 引用不存在` | `type`/`from` 指向了没定义的名字 | 检查拼写或补定义 |
 | `C6 命名冲突` | 两个地方定义了同名对象 | 改名 |
 | `C12 命名规范` | 名字大小写不对 | 按规范改 |
+| `C33 input 必须是 form 视图` | `api.input` 引用了 detail/brief/query 视图 | 改用 form 视图 |
 
 ## 下一步
 

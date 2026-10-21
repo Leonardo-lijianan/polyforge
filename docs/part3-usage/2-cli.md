@@ -1,14 +1,20 @@
 # 2. 命令行
 
-polyforge 提供三个命令。
+polyforge 提供六个命令。
 
 ```bash
-polyforge check   # 只校验，不生成
+polyforge check   # 只校验，不生成（默认）
 polyforge gen     # 校验 + 生成
 polyforge ir      # 打印 IR（调试用）
+polyforge docs    # 浏览文档
+polyforge syntax  # DSL 语法速查
+polyforge help    # 显示帮助
 ```
 
 不传命令时，默认 `check`。
+
+`--help` / `--version` / `docs` / `syntax` 都在**加载配置之前**返回，
+任何目录都能跑，不需要 `polyforge.config.yaml`。
 
 所有命令都支持 `--target=frontend|backend|db|openapi|all`（默认 `all`），限定只处理某一个目标。`check` 和 `ir` 忽略这个参数（校验和 IR 是全量的）。
 
@@ -130,6 +136,53 @@ polyforge ir
 ```
 
 输出 JSON，包含枚举、实体、视图、接口、依赖边。模型定义很复杂时，用它看 polyforge「理解成了什么」。
+
+## docs
+
+浏览文档。不需要配置，任何目录都能跑。
+
+```bash
+polyforge docs                       # 列出全部文档章节
+polyforge docs modifier-scope        # 打印该章节全文
+polyforge docs sensitive             # 细粒度主题：结构化摘要
+polyforge docs sensitive --json      # 结构化 JSON（含 sourcePath）
+```
+
+文件级 topic 来自扫描 `docs/part1~part5/**/*.md`，新增 md 自动出现在列表里。
+细粒度 topic 来自 `cli/syntax-index.mjs`（与 `polyforge syntax` 共用数据源）。
+
+## syntax
+
+DSL 语法速查。不需要配置，任何目录都能跑。
+
+```bash
+polyforge syntax                     # 列出全部关键字（按类别分组）
+polyforge syntax sensitive           # 打印关键字速查
+polyforge syntax nullable            # 同上
+polyforge syntax sensitive --json    # 结构化 JSON
+```
+
+输出包含：类别、允许位置、合法取值、类型约束、最小示例、说明、相关文档入口。
+
+**与 `docs` 的区别**：
+
+| | `docs` | `syntax` |
+|---|---|---|
+| 回答 | 为什么 / 完整矩阵 | 我现在要写这个字段，合法取值是什么 |
+| 输出 | md 全文 | 结构化速查 |
+| 数据源 | 扫 `docs/` | `cli/syntax-index.mjs` |
+
+两者在细粒度主题上共用数据源：`polyforge docs sensitive` 和 `polyforge syntax sensitive` 展示同一份记录，只是格式不同。
+
+## help
+
+```bash
+polyforge --help                     # 主帮助
+polyforge help gen                   # 子命令帮助
+polyforge gen --help                 # 等价于上一行
+```
+
+`help` 只列命令，不列关键字。关键字列表交给 `polyforge syntax`。
 
 ## 通过包管理器运行
 

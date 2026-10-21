@@ -191,6 +191,24 @@ polyforge gen --target=frontend   # 只跑前端，backend/db 这次跳过
 - manifest（`.polyforge/manifest.json`）按 target 分段，每段的 key 相对 `projectRoot`，所以在子目录跑也不会错。
 - `gen --target=xxx` 只重写 `xxx` 段，不动其他段。
 
+## 冷启动：先写模型，后建仓库
+
+`source` 强制 git 是为了保证各消费方契约一致。但项目刚起步时，模型还没写、仓库也还没建，会陷入「没 source 不能 check，不能 check 就没法验证模型」的循环。
+
+**当前解法**：用 `POLYFORGE_SOURCE` 指向本地模型目录，先跑 `check` / `ir` 验证语法：
+
+```bash
+# 模型放在 ./models 下（还没推 git）
+POLYFORGE_SOURCE=./models polyforge check
+POLYFORGE_SOURCE=./models polyforge ir
+```
+
+模型验证通过后，推到 git 仓库，再把 `source` 改成 git 形式，之后 `gen` 走正常流程。
+
+> `POLYFORGE_SOURCE` 是官方测试入口，不是长期方案。它优先级最高、静默覆盖 `source.git/ref`，会破坏契约版本可追溯性。**只用于冷启动和 polyforge 自身测试**。
+>
+> 规划中：`check` / `ir` 增加 `--source <dir>` 参数，按操作分级——生成前操作接受本地目录、零网络，`gen` / `verify` 才强制 git source。落地后 `POLYFORGE_SOURCE` 可移除。
+
 ## 环境变量
 
 | 变量 | 作用 |

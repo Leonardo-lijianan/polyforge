@@ -75,6 +75,30 @@
 | `sensitive` | 返回时打码/隐藏 |
 | `derived` | 服务端装配，仅出参 |
 
+#### `sensitive` 的值域
+
+`sensitive` 是**字符串枚举**，不是布尔：
+
+| 值 | 行为 |
+|---|---|
+| `mask` | 返回时打码（如 `138****1234`） |
+| `hide` | 返回时省略该字段 |
+
+写 `sensitive: true` 会报 schema 类型错误。正确写法：
+
+```yaml
+views:
+  OrderDetail:
+    kind: detail
+    fields:
+      phone:
+        type: string
+        from: Order.phone
+        sensitive: mask
+```
+
+且 `sensitive` 只能配 `type: string`（C20）。速查：`polyforge syntax sensitive`。
+
 ### 跨位置
 
 | 修饰符 | 说明 |
