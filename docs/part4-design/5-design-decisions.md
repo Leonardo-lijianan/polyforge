@@ -68,7 +68,7 @@
 | **Flyway 固定 V900** | 每次 gen 重写同名迁移文件，内容变则 checksum 变，Flyway 拒绝启动 | **分离初始化脚本 / 按 hash 生成版本号（TODO 2.6）** |
 | `fillFrom` 死语法 | schema 有字段，build IR 和生成器都不处理 | 删掉，或实现「服务端自动填充」 |
 | `from` 省 type 未实现 | 视图字段仍需显式写 `type: string`，不能从 `from` 推导 | 见 [id-reference.md](./id-reference.md#六已实现--待实现) |
-| 视图字段无「来源」校验 | 视图字段既无 `from` 也无 `derived` 时不报错（C33 候选） | 见 [6. 运行时](./6-runtime.md) |
+| 视图字段无「来源」校验 | 视图字段既无 `from` 也无 `derived` 时不报错（C34 候选；C33 已被 `api.input` 校验占用） | 见 [6. 运行时](./6-runtime.md) |
 
 ### 已解决
 

@@ -1,6 +1,6 @@
 # 3. 校验体系
 
-polyforge 的校验分两层，规则用 `C` 编号（C1 ~ C32）。
+polyforge 的校验分两层，规则用 `C` 编号（C1 ~ C33）。
 
 ## 两层校验
 
@@ -46,6 +46,7 @@ polyforge 的校验分两层，规则用 `C` 编号（C1 ~ C32）。
 | C30 | 日期字段名必须用 date/datetime | `validate/index.mjs` |
 | C31 | 修饰符位置合法（unique/ref/from/derived 等只能用在特定位置） | `validate/index.mjs` |
 | C32 | derived 字段语义（取值合法、与 from 互斥、relation 必须有 via） | `validate/index.mjs` |
+| C33 | api.input 必须引用 form 视图（入参方向只能是 form） | `validate/index.mjs` |
 
 > 编号 **C8 / C11 / C14 目前无实现**（注释残留）。
 
@@ -110,6 +111,7 @@ polyforge 的校验分两层，规则用 `C` 编号（C1 ~ C32）。
 |---|---|
 | C28 | 路径参数必须在 pathParams 声明 |
 | C29 | query / pathParams 只能是标量 |
+| C33 | api.input 引用的视图 kind 必须是 form；detail / brief / query 只能用作 output |
 
 ### 权限
 

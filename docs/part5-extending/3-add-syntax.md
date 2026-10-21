@@ -2,9 +2,9 @@
 
 **场景**：你想给模型加一个新关键字（如字段的 `encrypted: true`，让后端加密存储）。
 
-新增语法要动**四处**，缺一不可。
-
 ## 步骤
+
+新增语法动**五处**代码 + 两处数据源，缺一不可。
 
 ### 1. 确定适用范围（位置）
 
@@ -34,8 +34,8 @@
 | api.query / pathParams | ✗ | URL 参数由前端提供 |
 
 > 权威矩阵见 [10. 修饰符适用范围](../part2-model-spec/10-modifier-scope.md)。
-> ⚠️ **未落实**：位置约束目前无统一校验，`from` 写进 entity、`unique` 写进 view 都能通过。
-> 待补一条通用位置校验（C31）。
+> 位置约束由 C31 强制：`validate/index.mjs` 的 `MOD_SCOPE` 是矩阵的代码投影。
+> 新增关键字必须同时改矩阵和 `MOD_SCOPE`，两处不一致会导致「文档说能写、代码报错」。
 
 先定位置，再动 schema。位置没定，后面几步都在猜。
 
@@ -67,30 +67,61 @@ if (fd.encrypted) lines.push('    @Convert(converter = EncryptConverter.class)')
 
 如「`encrypted` 只能用在 string」——在 `validate/index.mjs` 加规则（见[加校验](./2-add-validation.md)），占一个新编号。
 
-### 6. 写测试 + 更新文档
+### 6. 同步 syntax-index（`polyforge syntax` 的数据源）
 
-- `tests/cases/` 加用例
-- [字段语法](../part2-model-spec/7-field-syntax.md)的表里加一行
+在 `cli/syntax-index.mjs` 加一条记录：
+
+```js
+encrypted: {
+  keyword: 'encrypted',
+  title: '加密存储',
+  category: 'modifier',
+  position: ['entity'],
+  values: [true, false],
+  typeConstraint: '必须配 type: string',
+  example: 'secret:\n  type: string\n  encrypted: true',
+  notes: '落库前加密，读取时解密',
+  docTopic: 'modifier-scope',
+},
+```
+
+不加这步，`polyforge syntax encrypted` 会报「未知关键字」，`docs-sync` 检查会失败。
+
+### 7. 写测试 + 更新文档
+
+- `tests/cases/` 加用例（正例 + 反例）
+- `tests/run.mjs` 的 `EXPECT` 注册
+- [字段语法](../part2-model-spec/7-field-syntax.md)的修饰符表加一行
+- [修饰符适用范围](../part2-model-spec/10-modifier-scope.md)的矩阵加一行（C31 的权威源）
+- [校验体系](../part4-design/3-validation.md)（若新语法有约束，加新 C 编号）
 
 ## 改动清单
 
 ```mermaid
 flowchart LR
-  P["1 位置\n适用范围"] --> S["2 schema\n语法合法"]
+  P["1 位置\n矩阵"] --> S["2 schema\n语法合法"]
   S --> I["3 build IR\n解析进 IR"]
   I --> G["4 生成器\n产出代码"]
-  G --> V["5 校验\n约束"]
-  V --> T["6 测试 + 文档"]
+  G --> V["5 校验\nC31 位置 + 新 C"]
+  V --> X["6 syntax-index\nsyntax 可查"]
+  X --> T["7 测试 + 文档"]
 ```
 
 | 步 | 文件 | 必做？ |
 |---|---|---|
-| 1 | （矩阵） | 是（否则位置约束缺失） |
+| 1 | `docs/part2-model-spec/10-modifier-scope.md` + `validate/index.mjs` 的 `MOD_SCOPE` | 是（C31 依赖） |
 | 2 | `schemas/contract.schema.json` | 是（否则语法非法） |
 | 3 | `parser/build-ir.mjs` | 看情况（影响类型才要） |
 | 4 | 各 `generators/**` | 是（否则无效果） |
-| 5 | `validate/index.mjs` | 看情况（有约束才要） |
-| 6 | `tests/` + 文档 | 是 |
+| 5 | `validate/index.mjs` + `validate/rules.mjs` + `validate/error-hints.mjs` | 看情况（有约束才要） |
+| 6 | `cli/syntax-index.mjs` | 是（否则 `polyforge syntax` 查不到，`docs-sync` 失败） |
+| 7 | `tests/cases/` + `tests/run.mjs` + 三篇文档 | 是 |
+
+`npm test` 里的 `docs-sync` 会自动检查：
+
+- `syntax-index` 的关键字都在 `contract.schema.json` 里
+- `error-hints` 引用的 keyword 都在 `syntax-index` 里
+- `docTopic` 引用的文档都存在
 
 ## 约束
 

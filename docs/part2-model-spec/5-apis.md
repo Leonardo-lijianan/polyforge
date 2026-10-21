@@ -24,7 +24,7 @@ api:
 | `path` | 是 | 以 `/` 开头，路径参数写 `:name` |
 | `summary` | 否 | 一句话描述 |
 | `auth` | 否 | 鉴权（见下） |
-| `input` | 否 | 请求体视图（一个 `form`） |
+| `input` | 否 | 请求体视图，**必须是 `form`**（用 detail/brief 报 C33） |
 | `output` | 否 | 响应视图 |
 | `query` | 否 | 查询参数（字段定义） |
 | `pathParams` | 否 | 路径参数类型声明（见下） |
@@ -117,6 +117,14 @@ pathParams:
 ```yaml
 auth: { roles: [superuser] }   # 报错：不在 UserRole 枚举里（C9）
 ```
+
+❌ `input` 用了出参视图
+
+```yaml
+input: OrderDetail             # 报错：kind 是 detail 不是 form（C33）
+```
+
+> 入参方向只能是 `form`。`detail` / `brief` / `query` 只能作 `output`。
 
 ❌ 接口名不是 camelCase
 

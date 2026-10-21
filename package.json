@@ -1,6 +1,6 @@
 {
   "name": "@leonardo-lijianan/polyforge",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "一份模型定义，生成数据库 / 后端 / 前端代码",
   "type": "module",
   "license": "MIT",
@@ -35,7 +35,8 @@
     "validate",
     "generators",
     "schemas",
-    "docs"
+    "docs",
+    "CHANGELOG.md"
   ],
   "publishConfig": {
     "access": "public"

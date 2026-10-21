@@ -2,8 +2,8 @@
 
 > 模型编译器：一份模型定义，生成数据库 / 后端 / 前端代码。
 
-> **状态（2026-10-20）**：本手册已按 1.0.0 代码校对（JPA→MyBatis-Plus 迁移收尾、`basePackage` 生效、`schemaVersion` 必填）。
-> 版本策略见 [VERSIONING.md](VERSIONING.md)；本轮改动清单见 `work-notes/2026-10-20-fix-plan.md`。
+> **状态（2026-10-21）**：本手册已按 1.1.0 代码校对（CLI 自解释 `--help` / `docs` / `syntax`、错误格式化附修法、新增 C33）。
+> 版本策略见 [VERSIONING.md](VERSIONING.md)；本轮改动清单见 `work-notes/2026-10-21-cli-self-explain-impl.md`。
 > 事实以代码为准——`polyforge/index.mjs`、`validate/index.mjs`、`generators/**` 是最终判据。
 
 ## 这是什么

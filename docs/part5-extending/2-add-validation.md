@@ -25,11 +25,11 @@
 在 `validate/index.mjs` 的 `validate()` 里加一段：
 
 ```js
-// ============ C30：日期字段不能有 default ============
+// ============ C34：日期字段不能有 default ============
 const checkDateDefault = (ownerKind, ownerName, fields) => {
   for (const [fn, fd] of Object.entries(fields)) {
     if (fd.type === 'date' && fd.default !== undefined) {
-      errors.push('C30 日期不能设默认值: ' + ownerKind + ' ' + ownerName + '.' + fn)
+      errors.push('C34 日期不能设默认值: ' + ownerKind + ' ' + ownerName + '.' + fn)
     }
   }
 }
@@ -39,10 +39,25 @@ for (const [name, v] of ir.views) checkDateDefault('视图', name, v.fields)
 
 ### 3. 占用编号
 
-编号按现有最大值递增（当前到 C29，下一条是 C30）。
+编号按现有最大值递增（当前到 C33，下一条是 C34）。
 
 > ⚠️ 已知问题：编号有跳号（C8/C11/C14 空），且分散两个文件。
 > 新加时，尽量把校验集中在 `validate/index.mjs`。
+
+### 3.1 同步 error-hints
+
+在 `validate/error-hints.mjs` 里为新编号加一条修法提示：
+
+```js
+C34: (e) => ({
+  fix: '日期字段不能设默认值；需要初值请在前端表单或 Service 里处理',
+  keyword: 'default',
+  docTopic: 'modifier-scope',
+}),
+```
+
+`keyword` 必须能在 `cli/syntax-index.mjs` 里找到，`docTopic` 必须是 `docs/` 下存在的 topic。
+`npm test` 里的 `docs-sync` 会检查这两点。
 
 ### 4. 写测试
 
@@ -55,14 +70,22 @@ entities:
   Foo:
     fields:
       id: { type: id }
-      d:  { type: date, default: '2020-01-01' }   # 应触发 C30
+      d:  { type: date, default: '2020-01-01' }   # 应触发 C34
 ```
 
-在 `tests/run.mjs` 的 `EXPECT` 里加 `'xxx.yaml': ['C30']`。
+在 `tests/run.mjs` 的 `EXPECT` 里加 `'xxx.yaml': ['C34']`。
 
 ### 5. 更新文档
 
-在[校验体系](../part4-design/3-validation.md)的编号表里加一行。
+三处同步：
+
+| 文件 | 加什么 |
+|---|---|
+| `docs/part4-design/3-validation.md` | 编号表加一行 |
+| `validate/rules.mjs` 的 `RULES` | 加 `C34: { level, summary, scope, impl }` |
+| `cli/syntax-index.mjs` | 若规则绑定某个关键字，补 `notes` 或在 `error-hints` 里引用 |
+
+`npm test` 里的 `docs-sync` 会检查 `rules.mjs` ↔ `docs/` 的一致性。
 
 ## 步骤（结构校验）
 

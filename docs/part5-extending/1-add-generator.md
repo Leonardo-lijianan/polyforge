@@ -6,14 +6,14 @@
 
 ### 0. 决定它是不是一个新 target
 
-polyforge 的生成按 **target** 组织：`--target=frontend` / `backend` / `db` / `all`。每个 target 是**独立完整的生成器集合**，`gen` 只是把它们依次跑。
+polyforge 的生成按 **target** 组织：`--target=frontend` / `backend` / `db` / `openapi` / `all`。每个 target 是**独立完整的生成器集合**，`gen` 只是把它们依次跑。
 
 新生成器落进两种形态之一：
 
 | 形态 | 例子 | 做法 |
 |---|---|---|
 | **加进已有 target** | 给 backend 加一个 Assembler 生成器 | 在 `index.mjs` 的 `if (wantBackend)` 段里加一行，config 不用改 |
-| **新建 target** | OpenAPI 导出、PlantUML 图 | 加 target 名到 `VALID_TARGETS`，加 `outputs.<新target>` 配置段，加 `targetsToWrite` 分支 |
+| **新建 target** | OpenAPI 导出、PlantUML 图 | 加 target 名到 `VALID_TARGETS`，加 `outputs.<新target>` 配置段，加 `wantXxx` 分支 |
 
 下面按「新建 target」讲，因为它覆盖的改动最多。
 
@@ -63,27 +63,7 @@ if (wantOpenapi && out.openapi) {
 }
 ```
 
-### 4. manifest 加 target 段
-
-`index.mjs` 的 manifest 写入循环里，`targetsToWrite` 加新 target，并写一段收集逻辑：
-
-```js
-const targetsToWrite = target === 'all'
-  ? ['frontend', 'backend', 'db', 'openapi']   // ← 加新 target
-  : [target]
-
-// 循环里
-} else if (t === 'openapi' && wantOpenapi && out.openapi) {
-  const section = {}
-  for (const f of walkDir(out.openapi)) {
-    const rel = f.replace(config.projectRoot, '').replace(/\\/g, '/').replace(/^\//, '')
-    section[rel] = getFileHash(f)
-  }
-  manifest.openapi = section
-}
-```
-
-### 5. 加配置字段
+### 4. 加配置字段
 
 `polyforge/config.mjs` 里解析新的输出路径（`outputs.openapi` 是一个目录字符串，不是对象——除非它自己也分多个产物）：
 
@@ -93,11 +73,11 @@ openapi: userConfig.outputs?.openapi
   : null,
 ```
 
-### 6. 写测试
+### 5. 写测试
 
-在 `polyforge/tests/cases/` 加一个用例，验证生成器在正常/异常模型下的行为。
+在 `polyforge/tests/cases/` 加一个用例，验证生成器在正常/异常模型下的行为。`tests/gen-smoke.mjs` 里的正向 case 也可以复用——它跑 `gen` 后检查产物特征。
 
-### 7. 更新文档
+### 6. 更新文档
 
 - [产物](../part3-usage/3-outputs.md) 的表里加一行
 - [命令行](../part3-usage/2-cli.md) 的 `--target` 说明里加新值
@@ -120,6 +100,12 @@ openapi: userConfig.outputs?.openapi
 | `generators/frontend/types.mjs` | 跨文件引用（import 处理） |
 | `generators/frontend/requestMap.mjs` | 按方法分组、逻辑键 |
 | `generators/java/service.mjs` | 手写保护（骨架刷新/保护） |
+
+## 不产生 manifest
+
+`gen` **不写 manifest.json**——`manifest.json` 已于 2026-10-20 删除，原 `verify` 命令由 `gen && git diff --exit-code` 替代。
+
+新生成器无需考虑 manifest 或 verify。原因见 [BASELINES.md](../BASELINES.md#manifestjson-为什么删了)。
 
 ## 常见坑
 

@@ -49,6 +49,8 @@ entities:
 
 推到 git 仓库（Gitee / GitHub / 自建均可），记下地址。
 
+> 还没建仓库就想先验证模型语法？用 `POLYFORGE_SOURCE=./models polyforge check` 跑本地校验，验证通过再推 git。详见[配置·冷启动](../part3-usage/1-config.md#冷启动先写模型后建仓库)。
+
 ### 2. 写配置
 
 消费方项目根建 `polyforge.config.yaml`：
@@ -77,7 +79,7 @@ outputs:
 ### 3. 生成
 
 ```bash
-node polyforge/index.mjs gen
+polyforge gen
 ```
 
 首次运行会 clone 契约仓库到**系统临时目录**（`<tmp>/polyforge-cache-<user>/`），跨项目共享。之后 `ref` 是 branch 时先 `ls-remote` 探测，同版本直接复用，不同才 `fetch`。
@@ -85,8 +87,10 @@ node polyforge/index.mjs gen
 只想生成前端：
 
 ```bash
-node polyforge/index.mjs gen --target=frontend
+polyforge gen --target=frontend
 ```
+
+> 没全局安装？用 `npx polyforge gen`，或 `node polyforge/index.mjs gen`（源码直接跑）。
 
 ## 验证
 
@@ -102,10 +106,24 @@ src/generated/types/
 生成物是全自动产物，下次 `gen` 会整体重建。要检测「契约变了但忘记重新 gen」：
 
 ```bash
-node polyforge/index.mjs gen && git diff --exit-code
+polyforge gen && git diff --exit-code
 ```
 
 产物有变化 → `git diff` 非空 → 退出码 1，适合作为 CI 门禁。
+
+## 卡住了怎么办
+
+配置报错、模型写错、不清楚某个关键字怎么用：
+
+```bash
+polyforge --help              # 命令列表
+polyforge help gen            # 某个命令的详细用法
+polyforge docs                # 全部文档章节
+polyforge docs config         # 配置参考
+polyforge syntax sensitive    # 某个关键字的合法取值和示例
+```
+
+这四个命令**不需要配置文件、不联网**，任何目录都能跑。
 
 ## 下一步
 

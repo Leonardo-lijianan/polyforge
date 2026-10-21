@@ -12,15 +12,19 @@ flowchart LR
 
 ## 模型（Model）
 
-你手写的 YAML，存在 `model/` 目录。它是**唯一事实来源**——所有产物都由它派生。
+你手写的 YAML。它是**唯一事实来源**——所有产物都由它派生。
 
 模型分三种文件：
 
 | kind | 放什么 | 例 |
 |---|---|---|
-| `global` | 全局共享的枚举、视图 | `model/global/enums.yaml` |
-| `domain` | 一个业务域的实体、视图、接口 | `model/domains/user.yaml` |
-| `permissions` | 权限矩阵 | `model/permissions.yaml` |
+| `global` | 全局共享的枚举、视图 | `global/enums.yaml` |
+| `domain` | 一个业务域的实体、视图、接口 | `domains/user.yaml` |
+| `permissions` | 权限矩阵 | `permissions.yaml` |
+
+> **模型放在哪**：一个独立的 git 仓库（契约仓库）。polyforge 通过配置里的 `source.git` + `source.ref` 拉取，clone 到系统临时目录的共享缓存。**不读本地目录**——保证所有消费方（前端项目 / 后端项目）拉到同一份契约。详见[配置](../part3-usage/1-config.md#source)。
+>
+> 冷启动阶段（契约仓库还没建）可以临时用 `POLYFORGE_SOURCE` 指向本地目录跑 `check` / `ir`，验证通过后再推 git。详见[配置·冷启动](../part3-usage/1-config.md#冷启动先写模型后建仓库)。
 
 ## IR（中间表示）
 
@@ -69,11 +73,13 @@ IR 不是文件，是运行时的对象（`Map` + 数组）。用 `polyforge ir`
 
 ```mermaid
 flowchart TD
-  A["读 model/*.yaml"] --> B["结构校验"]
-  B --> C["构建 IR"]
-  C --> D["语义校验"]
-  D --> E["各生成器读 IR"]
-  E --> F["写出产物"]
+  A["读配置 loadConfig"] --> B["resolveSourceDir\n（git clone / cache）"]
+  B --> C["读 *.yaml"]
+  C --> D["结构校验"]
+  D --> E["构建 IR"]
+  E --> F["语义校验"]
+  F --> G["各生成器读 IR"]
+  G --> H["写出产物"]
 ```
 
 ## 下一步

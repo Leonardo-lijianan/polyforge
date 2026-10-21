@@ -30,7 +30,7 @@
 
 | 生成器 | 输入 | 产物 |
 |---|---|---|
-| `java/flyway` | entities | 建表 SQL（PostgreSQL） |
+| `java/flyway` | entities | 建表 SQL（PostgreSQL / MySQL，由 `outputs.db.dialect` 决定） |
 
 > **命名注意**：`java/mapper` 是 MyBatis-Plus 的 DAO（`BaseMapper`），`java/assembler` 是视图映射器（Entity → DTO）。JPA 时代后者曾叫 `mapper`，与 MyBatis 的 Mapper 撞名后改名。
 
@@ -79,22 +79,25 @@ function javaType(fd) {
 保护逻辑：
 
 ```js
-function isPureSkeleton(content, methodCount) {
+function isPureSkeleton(content) {
   // 必须先剥注释：生成器头注释里有 "return" 这个词，
   // 全文匹配会让所有 Impl 永远被保护。
   const stripped = content
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '')
+  const overrideCount = (stripped.match(/@Override/g) || []).length
   const throwCount = (stripped.match(/throw new UnsupportedOperationException/g) || []).length
   const hasReturn = /\breturn\b/.test(stripped)
-  return throwCount === methodCount && !hasReturn
+  return overrideCount > 0 && throwCount === overrideCount && !hasReturn
 }
 ```
 
-- **纯骨架**（全 throw、无 return）→ 刷新
+- **纯骨架**（每个 `@Override` 方法体都是 throw TODO、无 return）→ 刷新
 - **有逻辑**（出现 return）→ 保护
 
-> ⚠️ 历史坑：曾用全文 `/<\\breturn\\b>/` 匹配，因头注释含 "return" 导致所有 Impl 永远「保护」，接口改了方法签名也不会同步。修复后必须先剥注释。
+> ⚠️ 历史坑（两层）：
+> 1. 曾用全文 `/\breturn\b/` 匹配，因头注释含 "return" 导致所有 Impl 永远「保护」。修复后先剥注释。
+> 2. 判据曾用外部传入的「当前接口方法数」`methodCount` 比较。接口新增方法后 `methodCount` 变大、旧文件里 throw 数不变，必然不等 → 误判非骨架 → 不刷新 → 编译失败（P0-6）。现在改为**文件内自洽判断**：`@Override` 数 == `throw TODO` 数。
 
 详见[产物](../part3-usage/3-outputs.md)。
 
@@ -123,7 +126,7 @@ if (wantBackend && be) {
   generateJavaMetaObjectHandler(ir, be.handServiceDir, be.basePackage)
 }
 if (wantDb && db?.flyway) {
-  generateJavaFlyway(ir, db.flyway)
+  generateJavaFlyway(ir, db.flyway, db.dialect || 'postgres')
 }
 ```
 

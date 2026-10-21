@@ -17,10 +17,12 @@ enums:
 | 端 | 产物 |
 |---|---|
 | 数据库 | 该枚举作字段时，列类型为 `varchar(32)` |
-| 后端 | `Role.java`：常量名大写（`ADMIN`），带 `@JsonValue`/`@JsonCreator` 做 JSON 桥接 |
+| 后端 | `Role.java`：常量名 SCREAMING_SNAKE_CASE（`admin` → `ADMIN`，`pendingPayment` → `PENDING_PAYMENT`），带 `@JsonValue`/`@JsonCreator` 做 JSON 桥接 |
 | 前端 | `type Role = 'admin' \| 'user' \| 'guest'` |
 
-**三端取值一致**：模型里写 `admin`，三端都用 `admin`（Java 常量名内部大写，但 JSON 收发仍是小写）。
+**三端取值一致**：模型里写 `admin`，三端都用 `admin`（Java 常量名转 SCREAMING_SNAKE_CASE，但 JSON 收发仍是原始 camelCase）。
+
+命名转换规则：camelCase → SCREAMING_SNAKE_CASE，即 `pendingPayment` → `PENDING_PAYMENT`。词边界靠小写→大写切换识别。
 
 ## 带标签
 

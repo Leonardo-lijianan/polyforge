@@ -4,23 +4,25 @@
 
 ## 总表
 
-| 模型 `type` | PostgreSQL | Java 实体 | Java DTO | TypeScript |
-|---|---|---|---|---|
-| `id`（long） | `bigint` | `Long` | `String` | `string`（视图里手写 `type: string` 时） |
-| `id`（string） | `varchar(64)` | `String` | `String` | `string` |
-| `id`（uuid） | `uuid` | `String` | `String` | `string` |
-| `string` | `varchar(n)` | `String` | `String` | `string` |
-| `text` | `text` | `String` | `String` | `string` |
-| `int` | `int` | `Integer` | `Integer` | `number` |
-| `long` | `bigint` | `Long` | `Long` | `number` |
-| `number` / `decimal` | `numeric(18,2)` | `BigDecimal` | `BigDecimal` | `number` |
-| `boolean` | `boolean` | `Boolean` | `Boolean` | `boolean` |
-| `date` | `date` | `LocalDate` | `LocalDate` | `string` |
-| `datetime` | `timestamptz` | `OffsetDateTime` | `OffsetDateTime` | `string` |
-| `json` | `jsonb` | （禁止） | `Object` | `unknown` |
-| 枚举 | `varchar(32)` | 枚举类 | 枚举类 | 字符串联合 |
-| 实体（引用） | `varchar(64)` | 实体类型 | — | `unknown` |
-| `array`（配 `of`） | `varchar[]` | `List<T>` | `List<T>` | `T[]` |
+SQL 类型由 `outputs.db.dialect` 决定：`postgres`（默认）或 `mysql`。
+
+| 模型 `type` | PostgreSQL | MySQL | Java 实体 | Java DTO | TypeScript |
+|---|---|---|---|---|---|
+| `id`（long） | `bigint GENERATED ALWAYS AS IDENTITY` | `bigint AUTO_INCREMENT` | `Long` | `String` | `string`（视图里手写 `type: string` 时） |
+| `id`（string） | `varchar(64)` | `varchar(64)` | `String` | `String` | `string` |
+| `id`（uuid） | `uuid` | `varchar(36)` | `String` | `String` | `string` |
+| `string` | `varchar(n)` | `varchar(n)` | `String` | `String` | `string` |
+| `text` | `text` | `longtext` | `String` | `String` | `string` |
+| `int` | `int` | `int` | `Integer` | `Integer` | `number` |
+| `long` | `bigint` | `bigint` | `Long` | `Long` | `number` |
+| `number` / `decimal` | `numeric(18,2)` | `numeric(18,2)` | `BigDecimal` | `BigDecimal` | `number` |
+| `boolean` | `boolean` | `tinyint(1)` | `Boolean` | `Boolean` | `boolean` |
+| `date` | `date` | `date` | `LocalDate` | `LocalDate` | `string` |
+| `datetime` | `timestamptz` | `datetime` | `OffsetDateTime` | `OffsetDateTime` | `string` |
+| `json` | `jsonb` | `json` | （禁止） | `Object` | `unknown` |
+| 枚举 | `varchar(32)` | `varchar(32)` | 枚举类 | 枚举类 | 字符串联合 |
+| 实体（引用） | `varchar(64)` | `varchar(64)` | 实体类型 | — | `unknown` |
+| `array`（配 `of`） | `varchar[]` | `json` | `List<T>` | `List<T>` | `T[]` |
 
 > **id 在前端的类型**：实体不生成前端类型，所以「实体里的 id」不会到前端。视图里的 id 字段如果写 `type: string`（推荐），前端就是 `string`；写 `type: long` 会变成 `number`——这就是为什么视图 id 必须手写 `string`。
 
@@ -53,7 +55,7 @@ DTO：   String userId;
 
 模型里写 `admin`，三端都用 `admin`：
 
-- PostgreSQL：`varchar` 存 `'admin'`
+- SQL（PG / MySQL 都是 `varchar`）：存 `'admin'`
 - Java：常量名 `ADMIN`，但 JSON 收发用小写 `"admin"`（靠 `@JsonValue`/`@JsonCreator`）
 - 前端：`'admin'`
 

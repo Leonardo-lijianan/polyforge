@@ -16,7 +16,8 @@ flowchart LR
 |---|---|
 | 数据库 | 建表 SQL（迁移脚本） |
 | 后端 | 实体、DTO、Mapper（DAO）、Assembler、Service 接口、Controller |
-| 前端 | 类型定义、请求映射 |
+| 前端 | 类型定义、请求映射、表单校验规则 |
+| OpenAPI | `openapi.json`（可选 target） |
 
 ## 它不做什么
 

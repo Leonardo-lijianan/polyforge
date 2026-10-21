@@ -118,6 +118,7 @@ source:
 | `frontend` | TS 类型 + 请求映射 + 校验规则 | `frontend/*` |
 | `backend` | 后端 Java 代码 | `java/*` |
 | `db` | 建表 SQL | `java/flyway` |
+| `openapi` | `openapi.json`（OpenAPI 3.0.3） | `openapi/index` |
 
 ### outputs.frontend
 
@@ -188,8 +189,9 @@ polyforge gen --target=frontend   # 只跑前端，backend/db 这次跳过
 
 - 所有路径**相对 `projectRoot`**，默认是运行 polyforge 时的工作目录。多仓库场景可显式配 `projectRoot`。
 - 目录不存在时，polyforge 会**自动创建**。
-- manifest（`.polyforge/manifest.json`）按 target 分段，每段的 key 相对 `projectRoot`，所以在子目录跑也不会错。
-- `gen --target=xxx` 只重写 `xxx` 段，不动其他段。
+- `gen --target=xxx` 只写 `xxx` 对应的目录，不动其他 target 的产物。
+
+> `.polyforge/manifest.json` 已于 2026-10-20 删除。现在只有两个基线文件：`schema-snapshot.json`（契约兼容性）和 `db-schema-state.json`（数据库迁移）。详见 [BASELINES.md](../BASELINES.md)。
 
 ## 冷启动：先写模型，后建仓库
 
@@ -207,15 +209,18 @@ POLYFORGE_SOURCE=./models polyforge ir
 
 > `POLYFORGE_SOURCE` 是官方测试入口，不是长期方案。它优先级最高、静默覆盖 `source.git/ref`，会破坏契约版本可追溯性。**只用于冷启动和 polyforge 自身测试**。
 >
-> 规划中：`check` / `ir` 增加 `--source <dir>` 参数，按操作分级——生成前操作接受本地目录、零网络，`gen` / `verify` 才强制 git source。落地后 `POLYFORGE_SOURCE` 可移除。
+> 规划中：`check` / `ir` 增加 `--source <dir>` 参数，按操作分级——生成前操作接受本地目录、零网络，`gen` 才强制 git source。落地后 `POLYFORGE_SOURCE` 可移除。
 
 ## 环境变量
 
 | 变量 | 作用 |
 |---|---|
-| `POLYFORGE_SOURCE` | 覆盖 `source` 指向本地目录，**仅供 polyforge 自身测试用**（优先级最高） |
+| `POLYFORGE_SOURCE` | 覆盖 `source` 指向本地目录，**仅供冷启动和 polyforge 自身测试用**（优先级最高） |
+| `POLYFORGE_CACHE` | 覆盖契约缓存的根目录（默认系统临时目录） |
+| `POLYFORGE_SNAPSHOT` | 覆盖 `schema-snapshot.json` 的路径（多消费方共享同一份基线时用） |
+| `POLYFORGE_DEBUG` | 设为 `1` 时打印完整错误堆栈（等价于 `--verbose`） |
 
-设置 `POLYFORGE_SOURCE` 后，会跳过 git 逻辑直接扫本地目录。这是唯一绕过 git 源的入口，不要在生产/CI 里使用。
+设置 `POLYFORGE_SOURCE` 后，会跳过 git 逻辑直接扫本地目录。这是唯一绕过 git 源的入口，**不要在生产/CI 里使用**。
 
 ## 下一步
 
