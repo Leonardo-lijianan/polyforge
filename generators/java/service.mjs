@@ -9,6 +9,11 @@
  *   - 实现类首次创建骨架；若仍是纯骨架（全 TODO），则随模型刷新以同步签名；
  *     一旦有人填入业务逻辑（出现 return），即受保护不再覆盖。
  *
+ * query 参数统一用 Map<String, Object>：
+ *   - 签名稳定：query 字段增删不改 Service 接口，不破坏已手写 Impl
+ *   - Controller 层逐字段展开（Spring 自动转类型），组装 Map 后传入
+ *   - ServiceImpl 拿到的值已是正确类型（Integer / BigDecimal / enum）
+ *
  * 路径参数类型由 api.pathParams 显式声明（C28 保证存在）。
  */
 import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs'
@@ -19,8 +24,6 @@ const HEADER = [
   '// 源：模型定义的 api 段',
   '',
 ]
-
-// 包名由 generateJavaService 的 basePackage 参数派生（见文件末尾）
 
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function camel(s) { return s.split(/[-_]/).filter(Boolean).map(cap).join('') }
@@ -34,6 +37,8 @@ const PRIM = {
   int: 'Integer', long: 'Long',
   number: 'BigDecimal', decimal: 'BigDecimal',
   boolean: 'Boolean',
+  date: 'LocalDate',
+  datetime: 'OffsetDateTime',
 }
 
 /** 从 path 提取路径参数名（:id → id） */
@@ -67,6 +72,7 @@ function methodParams(api) {
   const params = []
   for (const p of pathParams(api.path)) params.push({ type: pathParamJavaType(api, p), name: p })
   if (api.input) params.push({ type: api.input, name: 'form' })
+  // query 保持 Map<String, Object>：签名稳定，不破坏已手写 Impl
   if (api.query) params.push({ type: 'Map<String, Object>', name: 'query' })
   return params
 }
@@ -149,19 +155,19 @@ function renderImpl(domain, apis, PKG_SERVICE, PKG_DTO, PKG_IMPL) {
 
 /**
  * 判断已存在的 Impl 是否为「纯骨架」（未被人填过业务逻辑）。
- * 判据：方法体数量与 throw TODO 数量一致，且剥掉注释后无 return。
- * 纯骨架 → 可安全覆盖（用于同步签名变更）；否则保护，不覆盖。
+ * 判据：文件内 @Override 数 == throw TODO 数，且剥掉注释后无 return。
  *
- * 必须先剥注释：生成器写的头注释里有 "return" 这个词，
- * 直接对全文做 /\breturn\b/ 会恒为 true，导致所有 Impl 永远被保护。
+ * 关键：不再用外部传入的「当前接口方法数」比较。
+ * 旧实现用 apis.length 比较，接口新增方法后必不相等 → 误判非骨架 → 不刷新 → 编译失败。
  */
-function isPureSkeleton(content, methodCount) {
+function isPureSkeleton(content) {
   const stripped = content
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/\/\/[^\n]*/g, '')
+  const overrideCount = (stripped.match(/@Override/g) || []).length
   const throwCount = (stripped.match(/throw new UnsupportedOperationException/g) || []).length
   const hasReturn = /\breturn\b/.test(stripped)
-  return throwCount === methodCount && !hasReturn
+  return overrideCount > 0 && throwCount === overrideCount && !hasReturn
 }
 
 export function generateJavaService(ir, outRoot, handRoot, basePackage) {
@@ -191,7 +197,7 @@ export function generateJavaService(ir, outRoot, handRoot, basePackage) {
     }
     // 已存在：纯骨架则覆盖以同步签名，有人手写逻辑则保护跳过
     const existing = readFileSync(implPath, 'utf-8')
-    if (isPureSkeleton(existing, apis.length)) {
+    if (isPureSkeleton(existing)) {
       writeFileSync(implPath, renderImpl(domain, apis, PKG_SERVICE, PKG_DTO, PKG_IMPL), 'utf-8')
       implRefreshed++
     } else {

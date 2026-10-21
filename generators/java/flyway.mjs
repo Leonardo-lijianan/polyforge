@@ -61,7 +61,8 @@ export function schemaFromIR(ir, dialect = 'postgres') {
         t.pk = col
         t.columns.push({
           name: col,
-          sqlType: isAutoId(fd) ? (dialect === 'postgres' ? 'bigint GENERATED ALWAYS AS IDENTITY' : 'bigint AUTO_INCREMENT') : typeStr,
+          // MySQL 的 AUTO_INCREMENT 由 renderCreateTable 统一追加，这里只给类型，避免重复
+          sqlType: isAutoId(fd) ? (dialect === 'postgres' ? 'bigint GENERATED ALWAYS AS IDENTITY' : 'bigint') : typeStr,
           nullable: false,
           unique: false,
           pk: true,

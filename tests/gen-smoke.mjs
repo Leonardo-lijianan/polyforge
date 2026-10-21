@@ -14,6 +14,11 @@ const TMP_DIR = join(__dirname, '.tmp')
 const CLI = join(ROOT, 'index.mjs')
 const BASE_PACKAGE = 'com.example.smoke'
 
+// 测试隔离：清除外部 POLYFORGE_SNAPSHOT。
+// 场景：rebuild.ps1 设置了工作区级快照路径，若不清除，spawnSync 的子进程会继承，
+// 导致本测试的临时小模型对比工作区完整快照，误报几百处破坏性变更。
+delete process.env.POLYFORGE_SNAPSHOT
+
 let pass = 0
 let fail = 0
 function check(cond, msg) {

@@ -7,9 +7,16 @@
  * 约定：
  *   - 路径参数 :id → Spring {id}，类型由 api.pathParams 显式声明（C28 保证存在）
  *   - input  → @RequestBody
- *   - query  → @RequestParam Map<String, Object>
+ *   - query  → 逐字段 @RequestParam（Spring 自动转 Integer / BigDecimal / enum）
+ *              方法体里组装 Map<String, Object> 传给 Service
+ *              → Controller 对外契约类型化；Service 签名保持稳定
  *   - auth.roles → @PreAuthorize("hasAnyRole(...)")
  *   - 调用同名 Service 接口，返回 ApiResponse<Output>
+ *
+ * 为什么 Controller 逐字段、Service 用 Map：
+ *   - Controller 是 HTTP 边界，Spring 需要按字段名做绑定 + 类型转换
+ *   - Service 是内部契约，签名稳定才能不破坏已手写的 Impl
+ *   - OpenAPI 文档从 IR 生成（generators/openapi/index.mjs），与 Controller 注解无关
  */
 import { writeFileSync, mkdirSync, existsSync } from 'fs'
 import { join } from 'path'
@@ -20,8 +27,6 @@ const HEADER = [
   '',
 ]
 
-// 包名由 generateJavaController 的 basePackage 参数派生（见文件末尾）
-
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1) }
 function camel(s) { return s.split(/[-_]/).filter(Boolean).map(cap).join('') }
 function serviceName(domain) { return camel(domain) + 'Service' }
@@ -30,12 +35,23 @@ function serviceVar(domain) {
   return c.charAt(0).toLowerCase() + c.slice(1) + 'Service'
 }
 
-/** 基础类型 → Java 类型（供 pathParams 使用） */
+/** 基础类型 → Java 类型（供 pathParams / query 使用） */
 const PRIM = {
+  id: 'String',  // query 里的 id 按 String（build-ir 对 query 不解析 idType）
   string: 'String', text: 'String',
   int: 'Integer', long: 'Long',
   number: 'BigDecimal', decimal: 'BigDecimal',
   boolean: 'Boolean',
+  date: 'LocalDate',
+  datetime: 'OffsetDateTime',
+}
+
+/** query 字段 → Java 类型（C29 保证只有 primitive 或 enum） */
+function queryFieldJavaType(fd) {
+  if (fd.resolved?.kind === 'enum') return fd.resolved.target
+  const t = PRIM[fd.type]
+  if (!t) throw new Error('无法映射 query 字段类型: ' + fd.type)
+  return t
 }
 
 function pathParams(path) {
@@ -46,11 +62,7 @@ function pathParams(path) {
   return names
 }
 
-/**
- * 路径参数的 Java 类型。
- * C28 保证每个路径参数都在 pathParams 声明，故直接读取；
- * 遇到无法映射的类型抛错（fail fast）。
- */
+/** 路径参数的 Java 类型。C28 保证每个路径参数都在 pathParams 声明。 */
 function pathParamJavaType(api, name) {
   const def = api.pathParams[name]
   if (def.type === 'id') {
@@ -89,14 +101,22 @@ function preAuthorize(api) {
   return null
 }
 
+/** 方法参数：路径参数 → input → query 逐字段 */
 function controllerParams(api) {
   const ps = []
   for (const p of pathParams(api.path)) ps.push('@PathVariable ' + pathParamJavaType(api, p) + ' ' + p)
   if (api.input) ps.push('@RequestBody ' + api.input + ' form')
-  if (api.query) ps.push('@RequestParam Map<String, Object> query')
+  if (api.query) {
+    for (const [fn, fd] of Object.entries(api.query)) {
+      const t = queryFieldJavaType(fd)
+      const req = fd.nullable ? '@RequestParam(required = false) ' : '@RequestParam '
+      ps.push(req + t + ' ' + fn)
+    }
+  }
   return ps
 }
 
+/** 传给 Service 的实参列表（query 整体作为 Map 传） */
 function callArgs(api) {
   const args = []
   for (const p of pathParams(api.path)) args.push(p)
@@ -139,10 +159,23 @@ function renderController(domain, apis, PKG, PKG_SERVICE, PKG_DTO, PKG_RESP) {
   if (apis.some((a) => preAuthorize(a))) {
     lines.push('import org.springframework.security.access.prepost.PreAuthorize;')
   }
-  if (apis.some((a) => a.query)) lines.push('import java.util.Map;')
-  if (apis.some((a) => pathParams(a.path).some((p) => pathParamJavaType(a, p) === 'BigDecimal'))) {
-    lines.push('import java.math.BigDecimal;')
+  // query 字段类型 + query Map 容器需要的 import
+  const queryTypes = new Set()
+  let needsQueryMap = false
+  for (const a of apis) {
+    if (a.query) needsQueryMap = true
+    for (const fd of Object.values(a.query || {})) {
+      const t = queryFieldJavaType(fd)
+      if (t === 'BigDecimal') queryTypes.add('java.math.BigDecimal')
+      else if (t === 'LocalDate') queryTypes.add('java.time.LocalDate')
+      else if (t === 'OffsetDateTime') queryTypes.add('java.time.OffsetDateTime')
+      else if (fd.resolved?.kind === 'enum') queryTypes.add(PKG_DTO.replace(/\.dto$/, '.enums') + '.' + t)
+    }
   }
+  if (apis.some((a) => pathParams(a.path).some((p) => pathParamJavaType(a, p) === 'BigDecimal'))) {
+    queryTypes.add('java.math.BigDecimal')
+  }
+  for (const imp of [...queryTypes].sort()) lines.push('import ' + imp + ';')
   lines.push('')
 
   lines.push('@RestController')
@@ -165,6 +198,13 @@ function renderController(domain, apis, PKG, PKG_SERVICE, PKG_DTO, PKG_RESP) {
     lines.push('    ' + methodAnnotation(api))
     if (pa) lines.push('    ' + pa)
     lines.push('    public ApiResponse<' + out + '> ' + api.name + '(' + params.join(', ') + ') {')
+    // query 逐字段 → 组装 Map 传给 Service
+    if (api.query) {
+      lines.push('        java.util.Map<String, Object> query = new java.util.HashMap<>();')
+      for (const fn of Object.keys(api.query)) {
+        lines.push('        query.put("' + fn + '", ' + fn + ');')
+      }
+    }
     if (api.output) {
       lines.push('        return ApiResponse.success("' + esc(api.summary || '操作成功') + '", ' + svcVar + '.' + api.name + '(' + args + '));')
     } else {

@@ -27,6 +27,11 @@ function camelToSnake(s) {
   return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toLowerCase()
 }
 
+/** camelCase → SCREAMING_SNAKE_CASE（枚举常量名） */
+function toScreamingSnake(s) {
+  return s.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()
+}
+
 function javaType(fd) {
   if (fd.of) {
     const ofMap = { string: 'String', text: 'String', int: 'Integer', long: 'Long', number: 'BigDecimal', decimal: 'BigDecimal', boolean: 'Boolean', date: 'LocalDate', datetime: DATE_TIME_TYPE }
@@ -69,7 +74,7 @@ function renderEnum(name, def, PKG_ENUM) {
   if (def.description) lines.push('/** ' + def.description + ' */')
   lines.push('public enum ' + name + ' implements IEnum<String> {')
   lines.push('')
-  lines.push('    ' + vals.map((v) => v.toUpperCase() + '("' + v + '")').join(',\n    ') + ';')
+  lines.push('    ' + vals.map((v) => toScreamingSnake(v) + '("' + v + '")').join(',\n    ') + ';')
   lines.push('')
   lines.push('    private final String value;')
   lines.push('')
