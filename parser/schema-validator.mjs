@@ -37,37 +37,65 @@ function schemaForKind(kind) {
   return 'contract.schema.json'
 }
 
-/** 把 ajv 的单条 error 翻译成具体、可读的中文 */
+/** 把 ajv 的单条 error 翻译成结构化错误对象 */
 function formatError(e) {
   const path = e.instancePath || '(顶层)'
   const p = e.params || {}
+  let summary
+  let detail = null
+  let extra = {}
   switch (e.keyword) {
     case 'required':
-      return path + ' 缺少必填字段: ' + p.missingProperty
+      summary = path + ' 缺少必填字段: ' + p.missingProperty
+      extra = { property: p.missingProperty }
+      break
     case 'additionalProperties':
-      return path + ' 多出了不允许的字段: ' + p.additionalProperty
+      summary = path + ' 多出了不允许的字段: ' + p.additionalProperty
+      extra = { property: p.additionalProperty }
+      break
     case 'enum':
-      return path + ' 取值非法（应是 ' + (e.schema || []).join(' / ') + '）'
+      summary = path + ' 取值非法（应是 ' + (e.schema || []).join(' / ') + '）'
+      extra = { allowedValues: e.schema || [] }
+      break
     case 'type':
-      return path + ' 类型错误（应为 ' + e.schema + '）'
+      summary = path + ' 类型错误（应为 ' + e.schema + '）'
+      extra = { expectedType: e.schema }
+      break
     case 'minItems':
-      return path + ' 至少需要 ' + e.schema + ' 项'
+      summary = path + ' 至少需要 ' + e.schema + ' 项'
+      break
     case 'minProperties':
-      return path + ' 至少需要 ' + e.schema + ' 个字段'
+      summary = path + ' 至少需要 ' + e.schema + ' 个字段'
+      break
     case 'minLength':
-      return path + ' 长度不能少于 ' + e.schema
+      summary = path + ' 长度不能少于 ' + e.schema
+      break
     case 'pattern':
-      return path + ' 格式不符合 ' + e.schema
+      summary = path + ' 格式不符合 ' + e.schema
+      extra = { pattern: e.schema }
+      break
     case 'uniqueItems':
-      return path + ' 有重复项'
+      summary = path + ' 有重复项'
+      break
     case 'oneOf':
-      return path + ' 不符合任一允许的形态'
+      summary = path + ' 不符合任一允许的形态'
+      break
     case 'const':
-      return path + ' 值必须是 "' + e.schema + '"'
+      summary = path + ' 值必须是 "' + e.schema + '"'
+      break
     case 'if':
-      return path + ' 条件校验失败'
+      summary = path + ' 条件校验失败'
+      break
     default:
-      return path + ' ' + e.message
+      summary = path + ' ' + e.message
+  }
+  return {
+    kind: 'schema',
+    keyword: e.keyword,
+    path,
+    summary,
+    detail,
+    ...extra,
   }
 }
 
@@ -78,11 +106,21 @@ function formatError(e) {
 export function validateSchema(rel, doc) {
   const kind = doc && doc.kind
   if (!kind) {
-    return ['[' + rel + '] 缺少顶层 kind 字段（应为 domain / global / permissions）']
+    return [{
+      kind: 'schema',
+      keyword: 'required',
+      path: '(顶层)',
+      summary: '[' + rel + '] 缺少顶层 kind 字段（应为 domain / global / permissions）',
+      detail: null,
+      property: 'kind',
+    }]
   }
   const schemaFile = schemaForKind(kind)
   const validate = getValidator(schemaFile)
   const ok = validate(doc)
   if (ok) return []
-  return (validate.errors || []).map((e) => '[' + rel + '] ' + formatError(e))
+  return (validate.errors || []).map((e) => {
+    const err = formatError(e)
+    return { ...err, summary: '[' + rel + '] ' + err.summary }
+  })
 }

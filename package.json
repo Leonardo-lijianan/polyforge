@@ -30,6 +30,7 @@
     "config.mjs",
     "source.mjs",
     "snapshot.mjs",
+    "cli",
     "parser",
     "validate",
     "generators",
@@ -50,6 +51,6 @@
     "check": "node index.mjs check",
     "gen": "node index.mjs gen",
     "gen:check": "node index.mjs gen && git diff --exit-code",
-    "test": "node tests/run.mjs && node tests/alter-diff.mjs && node tests/gen-smoke.mjs"
+    "test": "node tests/run.mjs && node tests/alter-diff.mjs && node tests/gen-smoke.mjs && node tests/docs-sync.mjs"
   }
 }

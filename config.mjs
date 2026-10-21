@@ -22,6 +22,14 @@ const DEFAULT_CONFIG = {
 const YAML_FILE = 'polyforge.config.yaml'
 const MJS_FILE = 'polyforge.config.mjs'
 
+/** 构造带结构化字段的配置错误，供 cli/error-format.mjs 识别 */
+function configError(subkind, message) {
+  const e = new Error(message)
+  e.kind = 'config'
+  e.subkind = subkind
+  return e
+}
+
 /**
  * 当前支持的配置 schema 版本（major.minor，只有两段，与包版本的 major.minor.hotfix 不同）。
  * 兼容判定只看 major：polyforge 1.x.y 接受 schemaVersion 1.*。
@@ -57,7 +65,8 @@ export async function loadConfig(cwd = process.cwd()) {
   // 规则见 docs/VERSIONING.md。
   if (configFile) {
     if (userConfig.schemaVersion === undefined) {
-      throw new Error(
+      throw configError(
+        'no-schema-version',
         '配置文件 ' + configFile + ' 缺少 schemaVersion 字段。\n'
         + '请在文件顶层添加：\n'
         + "  schemaVersion: '" + SUPPORTED_SCHEMA_VERSION + "'\n"
@@ -72,7 +81,8 @@ export async function loadConfig(cwd = process.cwd()) {
     const verStr = raw === 1 ? '1.0' : String(raw)
     const major = parseInt(verStr.split('.')[0], 10)
     if (!/^\d+\.\d+$/.test(verStr)) {
-      throw new Error(
+      throw configError(
+        'bad-schema-version',
         '配置文件 ' + configFile + ' 的 schemaVersion="' + verStr + '" 格式非法。\n'
         + "应写成带引号的 major.minor，例如：schemaVersion: '" + SUPPORTED_SCHEMA_VERSION + "'\n"
         + '（不加引号的 1.0 会被 YAML 解析成数字 1，务必加引号。）\n'
@@ -80,7 +90,8 @@ export async function loadConfig(cwd = process.cwd()) {
       )
     }
     if (major !== SUPPORTED_SCHEMA_MAJOR) {
-      throw new Error(
+      throw configError(
+        'bad-schema-version',
         '配置文件 ' + configFile + ' 的 schemaVersion=' + verStr + ' 不受当前 polyforge 支持。\n'
         + '当前支持 major=' + SUPPORTED_SCHEMA_MAJOR + '（如 ' + SUPPORTED_SCHEMA_VERSION + '）。\n'
         + '请升级 polyforge，或按 docs/VERSIONING.md 迁移配置。'
@@ -109,7 +120,8 @@ export async function loadConfig(cwd = process.cwd()) {
   if (envSource) {
     source = { type: 'local', dir: resolve(cwd, envSource) }
   } else if (typeof userConfig.source === 'string') {
-    throw new Error(
+    throw configError(
+      'bad-source',
       'source 不支持字符串（本地路径）形式。请改为：\n'
       + 'source:\n'
       + '  git: git@gitee.com:org/we-engine-model.git\n'
@@ -126,9 +138,24 @@ export async function loadConfig(cwd = process.cwd()) {
         ? resolve(cwd, process.env.POLYFORGE_CACHE)
         : defaultCacheDir,
     }
+  } else if (!configFile) {
+    throw configError(
+      'no-file',
+      '未找到配置文件 polyforge.config.yaml。\n'
+      + '请在项目根目录创建，最小配置：\n'
+      + "  schemaVersion: '1.0'\n"
+      + '  source:\n'
+      + '    git: <契约仓库地址>\n'
+      + '    ref: main\n'
+      + '  outputs:\n'
+      + '    backend:\n'
+      + '      basePackage: com.example.app\n'
+      + '      generatedDir: src/main/java/com/example/app/generated'
+    )
   } else {
-    throw new Error(
-      '未找到 source 配置。请在 polyforge.config.yaml 里声明：\n'
+    throw configError(
+      'no-source',
+      '配置文件 ' + configFile + ' 缺少 source 字段。请补上：\n'
       + 'source:\n'
       + '  git: <契约仓库地址>\n'
       + '  ref: main'
@@ -177,7 +204,8 @@ export async function loadConfig(cwd = process.cwd()) {
         const v = userConfig.outputs?.openapi
         if (v == null) return null
         if (typeof v !== 'string') {
-          throw new Error(
+          throw configError(
+            'bad-outputs',
             'outputs.openapi 必须是字符串路径（不是对象）。正确写法：\n'
             + 'outputs:\n'
             + '  openapi: docs/api/openapi.json'

@@ -14,7 +14,7 @@
 import { loadConfig } from './config.mjs'
 import { resolveSourceDir } from './source.mjs'
 import { extractSnapshot, diffSnapshots, readSnapshot, writeSnapshot } from './snapshot.mjs'
-import { existsSync, rmSync, realpathSync } from 'fs'
+import { existsSync, rmSync, realpathSync, readFileSync } from 'fs'
 import { join } from 'path'
 import { fileURLToPath } from 'url'
 import { loadAll } from './parser/load.mjs'
@@ -28,10 +28,26 @@ import { runBackendGenerators } from './generators/registry.mjs'
 import { generateJavaFlyway } from './generators/java/flyway.mjs'
 import { writeDbSchemaState, generateAlterSql } from './generators/java/alter.mjs'
 import { generateOpenApi } from './generators/openapi/index.mjs'
+import { parseArgs, isKnownCommand } from './cli/args.mjs'
+import { mainHelp, commandHelp, unknownCommand } from './cli/help.mjs'
+import { runDocs } from './cli/docs.mjs'
+import { runSyntax } from './cli/syntax.mjs'
+import { formatErrors } from './cli/error-format.mjs'
 
-function printDiagnostics(result) {
+function printDiagnostics(result, verbose = false) {
   for (const w of result.warnings) console.warn('  [warn]  ' + w)
-  for (const e of result.errors) console.error('  [error] ' + e)
+  if (result.errors.length === 0) return
+  const errs = result.errors.map(normalizeCError)
+  console.error(formatErrors(errs, verbose))
+}
+
+/** C 编号错误字符串 → 结构化对象，供 error-format 查 hint */
+function normalizeCError(e) {
+  if (typeof e === 'object') return e
+  const s = String(e)
+  const m = s.match(/^(C\d+)\s+(.*)$/)
+  if (m) return { kind: 'C', code: m[1], summary: s }
+  return { kind: 'C', code: null, summary: s }
 }
 
 function serializeIR(ir) {
@@ -45,17 +61,58 @@ function serializeIR(ir) {
 }
 
 async function main() {
-  const cmd = process.argv[2] || 'check'
-  // --target=frontend|backend|db|all（默认 all，向后兼容）
-  const targetArg = process.argv.find((a) => a.startsWith('--target='))
-  const target = targetArg ? targetArg.split('=')[1] : 'all'
-  // --allow-breaking：显式允许破坏性变更（CI 里谨慎使用）
-  const allowBreaking = process.argv.includes('--allow-breaking')
-  const VALID_TARGETS = ['all', 'frontend', 'backend', 'db', 'openapi']
-  if (!VALID_TARGETS.includes(target)) {
-    console.error('[polyforge] --target 只接受: ' + VALID_TARGETS.join(' | '))
+  const parsed = parseArgs(process.argv)
+
+  // 参数错误（非法 --target、未知选项）：在 loadConfig 之前返回
+  if (parsed.error) {
+    console.error('[polyforge] ' + parsed.error)
     process.exit(1)
   }
+
+  // --version / version 子命令：不需要配置，直接返回
+  if (parsed.version || parsed.cmd === 'version') {
+    const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf-8'))
+    console.log(pkg.name + ' ' + pkg.version)
+    return
+  }
+
+  // --help / help <cmd>：不需要配置，直接返回
+  if (parsed.help) {
+    const target = parsed.helpTarget
+    if (target) {
+      const text = commandHelp(target)
+      if (text) { console.log(text); return }
+      console.error(unknownCommand(target))
+      process.exit(1)
+    }
+    console.log(mainHelp())
+    return
+  }
+
+  // docs / syntax：不需要配置，直接返回
+  if (parsed.cmd === 'docs') {
+    const r = runDocs(parsed.positionals, parsed.json)
+    console.log(r.output)
+    // 用 exitCode 而不是 process.exit：大输出到 pipe 时避免被截断
+    process.exitCode = r.exit
+    return
+  }
+  if (parsed.cmd === 'syntax') {
+    const r = runSyntax(parsed.positionals, parsed.json)
+    console.log(r.output)
+    process.exitCode = r.exit
+    return
+  }
+
+  // 未知命令：不碰配置，直接报错
+  if (!isKnownCommand(parsed.cmd)) {
+    console.error(unknownCommand(parsed.cmd))
+    process.exit(1)
+  }
+
+  const cmd = parsed.cmd
+  const target = parsed.target
+  const allowBreaking = parsed.allowBreaking
   const config = await loadConfig()
 
   console.log('')
@@ -77,7 +134,7 @@ async function main() {
     schemaErrors.push(...validateSchema(f.rel, f.doc))
   }
   if (schemaErrors.length > 0) {
-    schemaErrors.forEach((e) => console.error('  [error] ' + e))
+    console.error(formatErrors(schemaErrors, parsed.verbose))
     console.error('')
     console.error('[polyforge] 结构校验失败：' + schemaErrors.length + ' 个错误')
     process.exit(1)
@@ -94,7 +151,7 @@ async function main() {
   console.log('')
   console.log('[polyforge] 检查...')
   const result = validate(ir)
-  printDiagnostics(result)
+  printDiagnostics(result, parsed.verbose)
 
   if (result.errors.length > 0) {
     console.error('')
@@ -243,7 +300,25 @@ function isRunningAsCli() {
 
 if (isRunningAsCli()) {
   main().catch((err) => {
-    console.error('[polyforge] 异常:', err)
+    const verbose = process.argv.includes('--verbose') || process.env.POLYFORGE_DEBUG === '1'
+    // 配置错误走统一格式化（带修法 + 文档入口）
+    if (err && err.kind === 'config') {
+      const errObj = {
+        kind: 'config',
+        subkind: err.subkind,
+        summary: err.message,
+        detail: null,
+      }
+      console.error('')
+      console.error(formatErrors([errObj], verbose))
+      process.exit(1)
+    }
+    if (verbose) {
+      console.error('[polyforge] 异常:', err)
+    } else {
+      console.error('[polyforge] 异常: ' + (err && err.message ? err.message : err))
+      console.error('（运行 polyforge --verbose 或设 POLYFORGE_DEBUG=1 查看完整堆栈）')
+    }
     process.exit(1)
   })
 }
